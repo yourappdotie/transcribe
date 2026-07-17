@@ -32,6 +32,24 @@ for INPUT in "$@"; do
         continue
     fi
 
+EXT="${INPUT##*.}"
+EXT=$(printf '%s' "$EXT" | tr '[:upper:]' '[:lower:]')
+
+if [ "$EXT" = "mov" ] && [ ! -f "${INPUT%.*}.mp4" ]; then
+        MP4_OUTPUT="${INPUT%.*}.mp4"
+
+        echo "Creating browser-compatible MP4..."
+
+        ffmpeg -y -loglevel error \
+            -i "$INPUT" \
+            -c copy \
+            "$MP4_OUTPUT"
+
+        echo "Created:"
+        echo "  $MP4_OUTPUT"
+        echo
+    fi
+
     DIR="$(dirname "$INPUT")"
     NAME="$(basename "$INPUT")"
     BASE="${NAME%.*}"
