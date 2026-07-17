@@ -1,0 +1,5 @@
+models/*.bin
+
+*.wav
+*.srt
+*.vtt

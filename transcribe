@@ -1,0 +1,74 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL="$SCRIPT_DIR/models/ggml-small.en.bin"
+
+if [ "$#" -eq 0 ]; then
+    echo "Usage: $(basename "$0") <video-file>..."
+    exit 1
+fi
+
+if ! command -v ffmpeg >/dev/null; then
+    echo "Error: ffmpeg not found."
+    exit 1
+fi
+
+if ! command -v whisper-cli >/dev/null; then
+    echo "Error: whisper-cli not found."
+    exit 1
+fi
+
+if [ ! -f "$MODEL" ]; then
+    echo "Error: model not found:"
+    echo "  $MODEL"
+    exit 1
+fi
+
+for INPUT in "$@"; do
+    if [ ! -f "$INPUT" ]; then
+        echo "Skipping missing file: $INPUT"
+        continue
+    fi
+
+    DIR="$(dirname "$INPUT")"
+    NAME="$(basename "$INPUT")"
+    BASE="${NAME%.*}"
+
+    WAV="$DIR/$BASE.wav"
+    SRT="$DIR/$BASE.srt"
+    VTT="$DIR/$BASE.vtt"
+
+    echo "=== $NAME ==="
+
+    echo "Extracting audio..."
+    ffmpeg -y -loglevel error \
+        -i "$INPUT" \
+        -ar 16000 \
+        -ac 1 \
+        -c:a pcm_s16le \
+        "$WAV"
+
+    echo "Running Whisper..."
+    whisper-cli \
+        --language en \
+        --model "$MODEL" \
+        --output-srt \
+        "$WAV"
+
+    mv "$WAV.srt" "$SRT"
+
+    {
+        echo "WEBVTT"
+        echo
+        sed 's/,/./g' "$SRT"
+    } > "$VTT"
+
+    rm "$WAV"
+
+    echo "Created:"
+    echo "  $SRT"
+    echo "  $VTT"
+    echo
+done
