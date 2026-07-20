@@ -21,8 +21,9 @@ app.use(express.json());
 const uploadsDir = path.join(__dirname, "../uploads");
 
 const storage: StorageEngine = multer.diskStorage({
-  destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-    const fileId = (req.body.fileId as string) || uuidv4();
+  destination: (req: Request & { fileId?: string }, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+    const fileId = req.fileId || uuidv4();
+    req.fileId = fileId;
     const fileDir = path.join(uploadsDir, fileId);
     try {
       mkdirSync(fileDir, { recursive: true });
@@ -41,14 +42,14 @@ const upload = multer({ storage });
 app.post(
   "/api/upload",
   upload.single("file"),
-  async (req: Request & { file?: Express.Multer.File }, res: Response) => {
+  async (req: Request & { file?: Express.Multer.File; fileId?: string }, res: Response) => {
     try {
-      if (!req.file) {
+      if (!req.file || !req.fileId) {
         res.status(400).json({ error: "No file uploaded" });
         return;
       }
 
-      const fileId = (req.body.fileId as string) || uuidv4();
+      const fileId = req.fileId;
       const fileDir = path.join(uploadsDir, fileId);
       const filePath = path.join(fileDir, req.file.filename);
 
