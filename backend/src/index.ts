@@ -107,6 +107,70 @@ app.get("/api/download/:fileId/:filename", async (req: Request, res: Response) =
   }
 });
 
+app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) => {
+  try {
+    const { vttContent } = req.body;
+    if (!vttContent) {
+      res.status(400).json({ error: "No VTT content provided" });
+      return;
+    }
+
+    const fileDir = path.join(uploadsDir, req.params.fileId);
+    const status = await getFileStatus(req.params.fileId);
+
+    if (!status.output?.vtt) {
+      res.status(400).json({ error: "No subtitle file found" });
+      return;
+    }
+
+    const vttPath = path.join(fileDir, status.output.vtt);
+    const srtPath = path.join(fileDir, status.output.srt || "");
+
+    // Write VTT
+    await fs.writeFile(vttPath, vttContent);
+
+    // Convert VTT to SRT (replace periods with commas in timecodes)
+    const srtContent = vttContent
+      .replace(/WEBVTT\n\n/, "")
+      .split("\n")
+      .reduce((acc: string[], line: string, idx: number, arr: string[]) => {
+        if (line.includes("-->")) {
+          acc.push(line.replace(/\./g, ","));
+        } else {
+          acc.push(line);
+        }
+        return acc;
+      }, [])
+      .join("\n")
+      .trim();
+
+    // Add SRT numbering
+    const srtLines = srtContent.split("\n");
+    let entryNum = 1;
+    let srtWithNumbers = "";
+    for (let i = 0; i < srtLines.length; i++) {
+      const line = srtLines[i];
+      if (line.includes("-->")) {
+        srtWithNumbers += entryNum + "\n" + line + "\n";
+      } else if (line.trim() === "") {
+        if (srtWithNumbers.trim() && srtWithNumbers.trim().split("\n").length > 2) {
+          srtWithNumbers += "\n";
+          entryNum++;
+        }
+      } else {
+        srtWithNumbers += line + "\n";
+      }
+    }
+
+    await fs.writeFile(srtPath, srtWithNumbers.trim());
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Update subtitles error:", err);
+    res.status(500).json({ error: "Failed to update subtitles" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Transcribe backend running on http://localhost:${port}`);
 });

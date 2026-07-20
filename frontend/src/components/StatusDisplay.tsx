@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { getDownloadUrl, type FileStatus } from "../api";
+import SubtitleEditor from "./SubtitleEditor";
 
 interface StatusDisplayProps {
   job: {
@@ -55,6 +57,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
   const { fileId, filename, status } = job;
   const isComplete = status.step === "completed";
   const isError = status.step === "error";
+  const [showEditor, setShowEditor] = useState(false);
 
   return (
     <div className={`job-card ${status.step}`}>
@@ -83,6 +86,23 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
               <h4>Preview</h4>
               <VideoPlayer fileId={fileId} status={status} />
             </div>
+
+            {status.output.vtt && (
+              <div className="editor-section">
+                <button
+                  className={`edit-toggle-btn ${showEditor ? "active" : ""}`}
+                  onClick={() => setShowEditor(!showEditor)}
+                >
+                  {showEditor ? "✓ Close Editor" : "✏️ Edit Subtitles"}
+                </button>
+                {showEditor && (
+                  <SubtitleEditor
+                    fileId={fileId}
+                    vttUrl={getDownloadUrl(fileId, status.output.vtt)}
+                  />
+                )}
+              </div>
+            )}
 
             <div className="downloads-section">
               <h4>Downloads</h4>
