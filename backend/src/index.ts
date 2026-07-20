@@ -4,6 +4,7 @@ import multer, { StorageEngine } from "multer";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs/promises";
+import { mkdirSync } from "fs";
 import { fileURLToPath } from "url";
 import { transcribeFile } from "./transcribe.js";
 import { getFileStatus, listResults } from "./storage.js";
@@ -23,7 +24,12 @@ const storage: StorageEngine = multer.diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
     const fileId = (req.body.fileId as string) || uuidv4();
     const fileDir = path.join(uploadsDir, fileId);
-    cb(null, fileDir);
+    try {
+      mkdirSync(fileDir, { recursive: true });
+      cb(null, fileDir);
+    } catch (err) {
+      cb(err as Error, "");
+    }
   },
   filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
     cb(null, file.originalname);
@@ -45,8 +51,6 @@ app.post(
       const fileId = (req.body.fileId as string) || uuidv4();
       const fileDir = path.join(uploadsDir, fileId);
       const filePath = path.join(fileDir, req.file.filename);
-
-      await fs.mkdir(fileDir, { recursive: true });
 
       res.json({
         fileId,
