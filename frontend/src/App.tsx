@@ -72,6 +72,10 @@ export default function App() {
           )}
         </div>
       </main>
+
+      <footer className="footer">
+        <p>Made by Ger O'Connell • YourApp.ie</p>
+      </footer>
     </div>
   );
 }
