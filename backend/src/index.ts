@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
-import multer from "multer";
+import multer, { StorageEngine } from "multer";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs/promises";
@@ -19,47 +19,50 @@ app.use(express.json());
 
 const uploadsDir = path.join(__dirname, "../uploads");
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const fileId = req.body.fileId || uuidv4();
+const storage: StorageEngine = multer.diskStorage({
+  destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+    const fileId = (req.body.fileId as string) || uuidv4();
     const fileDir = path.join(uploadsDir, fileId);
     cb(null, fileDir);
   },
-  filename: (req, file, cb) => {
+  filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
     cb(null, file.originalname);
   },
 });
 
 const upload = multer({ storage });
 
-app.post("/api/upload", upload.single("file"), async (req: Request, res: Response) => {
-  try {
-    if (!req.file) {
-      res.status(400).json({ error: "No file uploaded" });
-      return;
+app.post(
+  "/api/upload",
+  upload.single("file"),
+  async (req: Request & { file?: Express.Multer.File }, res: Response) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No file uploaded" });
+        return;
+      }
+
+      const fileId = (req.body.fileId as string) || uuidv4();
+      const fileDir = path.join(uploadsDir, fileId);
+      const filePath = path.join(fileDir, req.file.filename);
+
+      await fs.mkdir(fileDir, { recursive: true });
+
+      res.json({
+        fileId,
+        filename: req.file.filename,
+        status: "uploaded",
+      });
+
+      transcribeFile(fileId, filePath).catch((err) => {
+        console.error(`Transcription failed for ${fileId}:`, err);
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      res.status(500).json({ error: "Upload failed" });
     }
-
-    const fileId = req.body.fileId || uuidv4();
-    const fileDir = path.join(uploadsDir, fileId);
-    const filePath = path.join(fileDir, req.file.filename);
-
-    await fs.mkdir(fileDir, { recursive: true });
-
-    res.json({
-      fileId,
-      filename: req.file.filename,
-      status: "uploaded",
-    });
-
-    // Start transcription in background
-    transcribeFile(fileId, filePath).catch((err) => {
-      console.error(`Transcription failed for ${fileId}:`, err);
-    });
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
   }
-});
+);
 
 app.get("/api/status/:fileId", async (req: Request, res: Response) => {
   try {

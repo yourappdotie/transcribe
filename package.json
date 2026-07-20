@@ -13,6 +13,8 @@
     "frontend"
   ],
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/multer": "^2.2.0",
     "concurrently": "^8.2.2"
   }
 }
