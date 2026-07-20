@@ -3,3 +3,11 @@ models/*.bin
 *.wav
 *.srt
 *.vtt
+
+node_modules
+dist
+.DS_Store
+*.local
+
+backend/uploads
+frontend/dist
