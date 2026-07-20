@@ -265,7 +265,48 @@ body {
   border-top: 1px solid var(--border);
 }
 
-.results-section h4 {
+.player-section {
+  margin-bottom: 2rem;
+}
+
+.player-section h4 {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.video-player-container {
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.video-player {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.video-player::cue {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+}
+
+.no-video {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.downloads-section {
+  margin-top: 1.5rem;
+}
+
+.downloads-section h4 {
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;

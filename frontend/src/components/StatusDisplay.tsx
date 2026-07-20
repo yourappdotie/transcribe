@@ -6,6 +6,40 @@ interface StatusDisplayProps {
     filename: string;
     status: FileStatus;
   };
+  originalFilename?: string;
+}
+
+function VideoPlayer({
+  fileId,
+  status,
+}: {
+  fileId: string;
+  status: FileStatus;
+}) {
+  if (!status.output?.vtt && !status.output?.mp4) {
+    return <p className="no-video">No video file available</p>;
+  }
+
+  // Use MP4 if available (converted from MOV), otherwise use original
+  const videoFile = status.output.mp4 || status.output.srt?.replace(".srt", "");
+
+  return (
+    <div className="video-player-container">
+      <video className="video-player" controls width="100%">
+        <source src={getDownloadUrl(fileId, videoFile || "")} type="video/mp4" />
+        {status.output.vtt && (
+          <track
+            kind="subtitles"
+            src={getDownloadUrl(fileId, status.output.vtt)}
+            srcLang="en"
+            label="English"
+            default
+          />
+        )}
+        Your browser does not support the video tag or subtitles.
+      </video>
+    </div>
+  );
 }
 
 const stepLabels: Record<FileStatus["step"], string> = {
@@ -45,23 +79,30 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
 
         {isComplete && status.output && (
           <div className="results-section">
-            <h4>Downloads</h4>
-            <div className="downloads">
-              {status.output.srt && (
-                <a href={getDownloadUrl(fileId, status.output.srt)} className="download-btn">
-                  📄 {status.output.srt}
-                </a>
-              )}
-              {status.output.vtt && (
-                <a href={getDownloadUrl(fileId, status.output.vtt)} className="download-btn">
-                  📄 {status.output.vtt}
-                </a>
-              )}
-              {status.output.mp4 && (
-                <a href={getDownloadUrl(fileId, status.output.mp4)} className="download-btn">
-                  🎬 {status.output.mp4}
-                </a>
-              )}
+            <div className="player-section">
+              <h4>Preview</h4>
+              <VideoPlayer fileId={fileId} status={status} />
+            </div>
+
+            <div className="downloads-section">
+              <h4>Downloads</h4>
+              <div className="downloads">
+                {status.output.srt && (
+                  <a href={getDownloadUrl(fileId, status.output.srt)} className="download-btn">
+                    📄 {status.output.srt}
+                  </a>
+                )}
+                {status.output.vtt && (
+                  <a href={getDownloadUrl(fileId, status.output.vtt)} className="download-btn">
+                    📄 {status.output.vtt}
+                  </a>
+                )}
+                {status.output.mp4 && (
+                  <a href={getDownloadUrl(fileId, status.output.mp4)} className="download-btn">
+                    🎬 {status.output.mp4}
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         )}
