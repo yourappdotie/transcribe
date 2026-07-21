@@ -9,6 +9,9 @@ export interface FileStatus {
     vtt: string | null;
     mp4: string | null;
   };
+  startTime?: number;
+  endTime?: number;
+  duration?: number;
 }
 
 export async function uploadFile(file: File): Promise<{ fileId: string; filename: string }> {

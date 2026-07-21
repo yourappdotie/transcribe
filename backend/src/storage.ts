@@ -19,6 +19,9 @@ export interface FileStatus {
     vtt: string | null;
     mp4: string | null;
   };
+  startTime?: number;
+  endTime?: number;
+  duration?: number;
 }
 
 export async function updateStatus(fileId: string, status: Partial<FileStatus>): Promise<void> {

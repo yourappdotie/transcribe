@@ -53,6 +53,21 @@ const stepLabels: Record<FileStatus["step"], string> = {
   error: "Error",
 };
 
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  } else {
+    return `${seconds}s`;
+  }
+}
+
 export default function StatusDisplay({ job }: StatusDisplayProps) {
   const { fileId, filename, status } = job;
   const isComplete = status.step === "completed";
@@ -92,6 +107,15 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
 
         {isComplete && status.output && (
           <div className="results-section">
+            {status.duration !== undefined && (
+              <div className="completion-stats">
+                <div className="stat-item">
+                  <span className="stat-label">Processing time:</span>
+                  <span className="stat-value">{formatDuration(status.duration)}</span>
+                </div>
+              </div>
+            )}
+
             <div className="player-section">
               <h4>Preview</h4>
               <VideoPlayer fileId={fileId} status={status} />

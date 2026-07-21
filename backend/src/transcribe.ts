@@ -8,8 +8,11 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
   const filename = path.basename(inputPath);
   const ext = path.extname(filename).toLowerCase();
   const basename = path.basename(filename, ext);
+  const startTime = Date.now();
 
   try {
+    // Record start time
+    await updateStatus(fileId, { startTime });
     // Check for model
     const modelPath = await getModelPath();
     if (!modelPath) {
@@ -100,10 +103,15 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     // Cleanup
     await fs.unlink(wavPath);
 
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
     await updateStatus(fileId, {
       step: "completed",
       message: "Transcription complete",
       progress: 100,
+      endTime,
+      duration,
       output: {
         srt: `${basename}.srt`,
         vtt: `${basename}.vtt`,
