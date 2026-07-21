@@ -35,7 +35,7 @@ export default function App() {
 
       setJobs((prev) => [newJob, ...prev]);
 
-      // Poll for status updates
+      // Poll for status updates every 5 seconds
       const pollInterval = setInterval(async () => {
         try {
           const status = await getStatus(fileId);
@@ -49,7 +49,7 @@ export default function App() {
         } catch (err) {
           console.error("Error polling status:", err);
         }
-      }, 500);
+      }, 5000);
     } catch (err) {
       console.error("Upload error:", err);
       alert("Upload failed. Please try again.");
