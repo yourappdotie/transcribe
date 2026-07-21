@@ -84,8 +84,6 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
       </div>
 
       <div className="job-content">
-        <p className="status-message">{status.message}</p>
-
         {!isComplete && !isError && (
           <div className="progress-section">
             <div className="progress-container">
@@ -106,7 +104,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
         )}
 
         {isComplete && status.output && (
-          <div className="results-section">
+          <>
             {status.duration !== undefined && (
               <div className="completion-stats">
                 <div className="stat-item">
@@ -116,27 +114,29 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
               </div>
             )}
 
-            <div className="player-section">
-              <h4>Preview</h4>
-              <VideoPlayer fileId={fileId} status={status} />
-            </div>
-
-            {status.output.vtt && (
-              <div className="editor-section">
-                <button
-                  className={`edit-toggle-btn ${showEditor ? "active" : ""}`}
-                  onClick={() => setShowEditor(!showEditor)}
-                >
-                  {showEditor ? "✓ Close Editor" : "✏️ Edit Subtitles"}
-                </button>
-                {showEditor && (
-                  <SubtitleEditor
-                    fileId={fileId}
-                    vttUrl={getDownloadUrl(fileId, status.output.vtt)}
-                  />
-                )}
+            <div className="video-editor-layout">
+              <div className="player-section">
+                <h4>Preview</h4>
+                <VideoPlayer fileId={fileId} status={status} />
               </div>
-            )}
+
+              {status.output.vtt && (
+                <div className="editor-section">
+                  <button
+                    className={`edit-toggle-btn ${showEditor ? "active" : ""}`}
+                    onClick={() => setShowEditor(!showEditor)}
+                  >
+                    {showEditor ? "✓ Close Editor" : "✏️ Edit Subtitles"}
+                  </button>
+                  {showEditor && (
+                    <SubtitleEditor
+                      fileId={fileId}
+                      vttUrl={getDownloadUrl(fileId, status.output.vtt)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="downloads-section">
               <h4>Downloads</h4>
@@ -158,7 +158,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
                 )}
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {!isComplete && !isError && status.step === "transcribing" && (

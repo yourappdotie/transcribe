@@ -379,8 +379,33 @@ body {
   font-family: monospace;
 }
 
+/* Side-by-side layout for video and editor */
+.video-editor-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  margin: 1.5rem 0 2rem 0;
+}
+
+@media (min-width: 800px) {
+  .video-editor-layout {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+
+  .video-editor-layout .editor-section {
+    display: flex;
+    flex-direction: column;
+    max-height: 700px;
+  }
+
+  .video-editor-layout .subtitle-entries {
+    max-height: 550px;
+  }
+}
+
 .player-section {
-  margin-bottom: 2rem;
+  margin-bottom: 0;
 }
 
 .player-section h4 {
