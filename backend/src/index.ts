@@ -141,8 +141,8 @@ app.get("/api/uploads", async (req: Request, res: Response) => {
 
         // Count chunk files to determine progress
         const files = await fs.readdir(folderPath);
-        const wavChunks = files.filter((f) => f.match(/^chunk_\d+\.wav$/)).length;
-        const srtChunks = files.filter((f) => f.match(/^chunk_\d+\.srt$/)).length;
+        const wavChunks = files.filter((f) => /^chunk_\d+\.wav$/.test(f)).length;
+        const srtChunks = files.filter((f) => /^chunk_\d+\.srt$/.test(f)).length;
         const videoFile = files.find((f) =>
           f.match(/\.(mp4|mov|webm|mkv)$/i)
         );

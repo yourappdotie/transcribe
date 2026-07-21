@@ -118,9 +118,9 @@ export default function PreviousUploads({ onResume }: PreviousUploadsProps) {
               </div>
               <div className="card-body">
                 <p className="filename">{upload.filename}</p>
-                {!isComplete && upload.wavChunks > 0 && (
+                {!isComplete && upload.srtChunks > 0 && (
                   <p className="progress-text">
-                    {upload.srtChunks}/{upload.wavChunks} chunks
+                    {upload.srtChunks} chunks completed
                   </p>
                 )}
                 {!isComplete && (
