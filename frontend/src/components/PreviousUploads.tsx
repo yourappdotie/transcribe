@@ -120,9 +120,9 @@ export default function PreviousUploads({ onResume }: PreviousUploadsProps) {
               </div>
               <div className="card-body">
                 <p className="filename">{upload.filename}</p>
-                {!isComplete && upload.totalChunks > 0 && (
+                {!isComplete && (upload.totalChunks > 0 || upload.chunksCompleted > 0) && (
                   <p className="progress-text">
-                    {upload.chunksCompleted}/{upload.totalChunks} chunks completed
+                    {upload.totalChunks > 0 ? `${upload.chunksCompleted}/${upload.totalChunks} chunks completed` : `${upload.chunksCompleted} chunks completed`}
                   </p>
                 )}
                 {!isComplete && (
