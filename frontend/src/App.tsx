@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { uploadFile, getStatus, type FileStatus } from "./api";
 import Uploader from "./components/Uploader";
 import StatusDisplay from "./components/StatusDisplay";
-import OriginalVideoPlayback from "./components/OriginalVideoPlayback";
 import PreviousUploads from "./components/PreviousUploads";
 
 interface TranscriptionJob {
@@ -139,19 +138,11 @@ export default function App() {
       </header>
 
       <main className="main">
-        {!isProcessing ? (
+        {!isProcessing && (
           <>
             <Uploader onUpload={handleUpload} />
             <PreviousUploads onResume={handleResume} />
           </>
-        ) : (
-          jobs.length > 0 && (
-            <OriginalVideoPlayback
-              fileId={jobs[0].fileId}
-              filename={jobs[0].originalFilename}
-              liveVtt={jobs[0].liveVtt}
-            />
-          )
         )}
 
         <div className="jobs">

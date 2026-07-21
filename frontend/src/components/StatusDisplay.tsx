@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getDownloadUrl, type FileStatus } from "../api";
 import SubtitleEditor from "./SubtitleEditor";
+import OriginalVideoPlayback from "./OriginalVideoPlayback";
 
 interface StatusDisplayProps {
   job: {
@@ -163,9 +164,20 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
         )}
 
         {!isComplete && !isError && status.step === "transcribing" && (
-          <div className="live-editor-section">
-            <h4>Live Transcription (updates as chunks complete)</h4>
-            <SubtitleEditor fileId={fileId} isLive={true} liveVtt={job.liveVtt} />
+          <div className="video-editor-layout">
+            <div className="player-section">
+              <h4>Original Video</h4>
+              <OriginalVideoPlayback
+                fileId={fileId}
+                filename={job.originalFilename}
+                liveVtt={job.liveVtt}
+              />
+            </div>
+
+            <div className="editor-section">
+              <h4>Live Transcription (updates as chunks complete)</h4>
+              <SubtitleEditor fileId={fileId} isLive={true} liveVtt={job.liveVtt} />
+            </div>
           </div>
         )}
 
