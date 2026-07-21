@@ -171,7 +171,18 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
         )}
 
         {!isComplete && !isError && status.step === "transcribing" && (
-          <div className="video-editor-layout">
+          <>
+            <div className="transcription-progress">
+              <div className="progress-info">
+                <p className="progress-message">{status.message}</p>
+                <p className="progress-percent">{status.progress || 0}%</p>
+              </div>
+              <div className="progress-bar-container">
+                <div className="progress-bar" style={{ width: `${status.progress || 0}%` }}></div>
+              </div>
+            </div>
+
+            <div className="video-editor-layout">
             <div className="player-section">
               <h4>Original Video</h4>
               <OriginalVideoPlayback
@@ -187,6 +198,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
               <SubtitleEditor fileId={fileId} isLive={true} liveVtt={job.liveVtt} onSeek={handleSeek} />
             </div>
           </div>
+          </>
         )}
 
         {isError && (
