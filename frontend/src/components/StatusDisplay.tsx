@@ -71,12 +71,22 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
       <div className="job-content">
         <p className="status-message">{status.message}</p>
 
-        {status.progress > 0 && !isComplete && !isError && (
+        {!isComplete && !isError && (
           <div className="progress-section">
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${status.progress}%` }}></div>
+            <div className="progress-container">
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${status.progress}%` }}></div>
+              </div>
+              <span className="progress-percentage">{status.progress}%</span>
             </div>
-            <p className="progress-text">{status.progress}%</p>
+            <div className="step-indicator">
+              <span className={`step-dot ${status.step === "converting" ? "active" : status.step === "extracting" || status.step === "transcribing" ? "done" : ""}`}></span>
+              <span className="step-label">Convert</span>
+              <span className={`step-dot ${status.step === "extracting" ? "active" : status.step === "transcribing" ? "done" : ""}`}></span>
+              <span className="step-label">Extract</span>
+              <span className={`step-dot ${status.step === "transcribing" ? "active" : ""}`}></span>
+              <span className="step-label">Transcribe</span>
+            </div>
           </div>
         )}
 

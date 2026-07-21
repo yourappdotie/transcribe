@@ -86,14 +86,7 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       progress: 0,
     });
 
-    await runCommand("whisper-cli", [
-      "--language",
-      "en",
-      "--model",
-      modelPath,
-      "--output-srt",
-      wavPath,
-    ]);
+    await runTranscribeCommand(fileId, wavPath, modelPath);
 
     const srtPath = path.join(fileDir, `${basename}.srt`);
     await fs.rename(`${wavPath}.srt`, srtPath);
@@ -140,6 +133,60 @@ function runCommand(command: string, args: string[]): Promise<void> {
     proc.on("close", (code) => {
       if (code !== 0) {
         reject(new Error(`${command} failed: ${stderr}`));
+      } else {
+        resolve();
+      }
+    });
+
+    proc.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
+async function runTranscribeCommand(
+  fileId: string,
+  wavPath: string,
+  modelPath: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("whisper-cli", [
+      "--language",
+      "en",
+      "--model",
+      modelPath,
+      "--output-srt",
+      "--print-progress",
+      wavPath,
+    ]);
+
+    let stderr = "";
+    let lastProgress = 0;
+
+    proc.stderr.on("data", (data) => {
+      const output = data.toString();
+      stderr += output;
+
+      // Parse progress: "whisper_print_progress_callback: progress = X%"
+      const match = output.match(/progress\s*=\s*(\d+)%/);
+      if (match) {
+        const progress = parseInt(match[1], 10);
+        if (progress !== lastProgress) {
+          lastProgress = progress;
+          updateStatus(fileId, {
+            step: "transcribing",
+            message: `Transcribing... ${progress}%`,
+            progress,
+          }).catch(() => {
+            // Ignore status update errors
+          });
+        }
+      }
+    });
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`whisper-cli failed: ${stderr}`));
       } else {
         resolve();
       }
