@@ -7,6 +7,7 @@ interface StatusDisplayProps {
     fileId: string;
     filename: string;
     status: FileStatus;
+    liveVtt?: string;
   };
   originalFilename?: string;
 }
@@ -164,7 +165,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
         {!isComplete && !isError && status.step === "transcribing" && (
           <div className="live-editor-section">
             <h4>Live Transcription (updates as chunks complete)</h4>
-            <SubtitleEditor fileId={fileId} isLive={true} />
+            <SubtitleEditor fileId={fileId} isLive={true} liveVtt={job.liveVtt} />
           </div>
         )}
 

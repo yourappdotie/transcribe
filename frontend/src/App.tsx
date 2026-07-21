@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { uploadFile, getStatus, type FileStatus } from "./api";
 import Uploader from "./components/Uploader";
 import StatusDisplay from "./components/StatusDisplay";
@@ -10,10 +10,62 @@ interface TranscriptionJob {
   filename: string;
   originalFilename: string;
   status: FileStatus;
+  liveVtt?: string;
 }
 
 export default function App() {
   const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
+  const pollIntervalRef = useRef<NodeJS.Timeout>();
+
+  // Single unified polling for all active jobs
+  useEffect(() => {
+    const activeJobs = jobs.filter(
+      (job) => job.status.step !== "completed" && job.status.step !== "error"
+    );
+
+    if (activeJobs.length === 0) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      return;
+    }
+
+    const poll = async () => {
+      for (const job of activeJobs) {
+        try {
+          // Fetch status
+          const status = await getStatus(job.fileId);
+
+          // Fetch live VTT if transcribing
+          let liveVtt;
+          if (status.step === "transcribing" || status.step === "converting" || status.step === "extracting") {
+            const response = await fetch(`/api/transcription/${job.fileId}/live`);
+            if (response.ok) {
+              const data = await response.json();
+              liveVtt = data.vtt;
+            }
+          }
+
+          setJobs((prev) =>
+            prev.map((j) =>
+              j.fileId === job.fileId ? { ...j, status, liveVtt } : j
+            )
+          );
+        } catch (err) {
+          console.error(`Error polling job ${job.fileId}:`, err);
+        }
+      }
+    };
+
+    poll();
+    pollIntervalRef.current = setInterval(poll, 5000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [jobs]);
 
   const isProcessing = jobs.some(
     (job) => job.status.step !== "completed" && job.status.step !== "error"
@@ -31,29 +83,7 @@ export default function App() {
       };
 
       setJobs((prev) => [newJob, ...prev]);
-
-      // Poll for status updates
-      if (status.step !== "completed" && status.step !== "error") {
-        const pollInterval = setInterval(async () => {
-          try {
-            const updatedStatus = await getStatus(fileId);
-            setJobs((prev) =>
-              prev.map((job) =>
-                job.fileId === fileId ? { ...job, status: updatedStatus } : job
-              )
-            );
-
-            if (
-              updatedStatus.step === "completed" ||
-              updatedStatus.step === "error"
-            ) {
-              clearInterval(pollInterval);
-            }
-          } catch (err) {
-            console.error("Error polling status:", err);
-          }
-        }, 5000);
-      }
+      // Polling will start automatically via useEffect
     } catch (err) {
       console.error("Resume error:", err);
       alert("Failed to resume job. Please try again.");
@@ -119,6 +149,7 @@ export default function App() {
             <OriginalVideoPlayback
               fileId={jobs[0].fileId}
               filename={jobs[0].originalFilename}
+              liveVtt={jobs[0].liveVtt}
             />
           )
         )}

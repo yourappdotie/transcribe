@@ -4,11 +4,13 @@ import { getDownloadUrl } from "../api";
 interface OriginalVideoPlaybackProps {
   fileId: string;
   filename: string;
+  liveVtt?: string;
 }
 
 export default function OriginalVideoPlayback({
   fileId,
   filename,
+  liveVtt,
 }: OriginalVideoPlaybackProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<HTMLTrackElement>(null);
@@ -22,43 +24,28 @@ export default function OriginalVideoPlayback({
   if (ext === "mov") mimeType = "video/quicktime";
   if (ext === "webm") mimeType = "video/webm";
 
-  // Poll for live subtitles and update track
+  // Update subtitle track when liveVtt changes
   useEffect(() => {
-    const updateSubtitles = async () => {
-      try {
-        const response = await fetch(`/api/transcription/${fileId}/live`);
-        if (!response.ok) return;
+    if (liveVtt && trackRef.current) {
+      // Create blob URL for the VTT content
+      const blob = new Blob([liveVtt], { type: "text/vtt" });
+      const url = URL.createObjectURL(blob);
 
-        const data = await response.json();
-        if (data.vtt) {
-          // Create blob URL for the VTT content
-          const blob = new Blob([data.vtt], { type: "text/vtt" });
-          const url = URL.createObjectURL(blob);
-
-          // Update track source
-          if (trackRef.current) {
-            // Revoke old URL
-            if (vttUrl) {
-              URL.revokeObjectURL(vttUrl);
-            }
-            trackRef.current.src = url;
-            setVttUrl(url);
-          }
-        }
-      } catch (err) {
-        console.error("Error updating subtitles:", err);
+      // Revoke old URL
+      if (vttUrl) {
+        URL.revokeObjectURL(vttUrl);
       }
-    };
 
-    updateSubtitles();
-
-    // Poll every 5 seconds
-    const interval = setInterval(updateSubtitles, 5000);
+      trackRef.current.src = url;
+      setVttUrl(url);
+    }
 
     return () => {
-      clearInterval(interval);
+      if (vttUrl) {
+        URL.revokeObjectURL(vttUrl);
+      }
     };
-  }, [fileId, vttUrl]);
+  }, [liveVtt, vttUrl]);
 
   return (
     <div className="original-video-section">

@@ -11,9 +11,10 @@ interface SubtitleEditorProps {
   vttUrl?: string;
   onSaved?: () => void;
   isLive?: boolean;
+  liveVtt?: string;
 }
 
-export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false }: SubtitleEditorProps) {
+export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false, liveVtt }: SubtitleEditorProps) {
   const [entries, setEntries] = useState<SubtitleEntry[]>([]);
   const [history, setHistory] = useState<SubtitleEntry[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -28,12 +29,13 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
       try {
         let content: string;
 
-        if (isLive) {
-          // Load from live endpoint (completed chunks)
-          const response = await fetch(`/api/transcription/${fileId}/live`);
-          if (!response.ok) throw new Error("Failed to load live transcription");
-          const data = await response.json();
-          content = data.vtt || "";
+        if (isLive && liveVtt) {
+          // Use live VTT from props (polling is done by parent)
+          content = liveVtt;
+        } else if (isLive) {
+          // Live mode but no VTT yet
+          setIsLoading(false);
+          return;
         } else {
           // Load from static VTT URL
           if (!vttUrl) throw new Error("No VTT URL provided");
@@ -54,13 +56,7 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
     };
 
     loadVTT();
-
-    // Poll every 5 seconds for live updates
-    if (isLive) {
-      const interval = setInterval(loadVTT, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [fileId, vttUrl, isLive]);
+  }, [liveVtt, vttUrl, isLive, fileId]);
 
   const parseVTT = (content: string): SubtitleEntry[] => {
     const lines = content.split("\n");
