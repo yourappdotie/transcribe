@@ -33,6 +33,7 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     const numChunks = Math.ceil(duration / CHUNK_DURATION);
 
     // Check if this is a resume (chunks already exist)
+    let chunkPaths: string[] = [];
     const files = await fs.readdir(fileDir);
     const existingChunks = files.filter((f) => f.match(/^chunk_\d+\.mp4$/)).length;
     const isResume = existingChunks > 0;
@@ -70,8 +71,8 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
         videoPath = mp4Path;
       }
 
-      // Split video into chunks
-      await splitVideoIntoChunks(fileId, videoPath, fileDir, numChunks);
+      // Split video into chunks and get the chunk paths directly
+      chunkPaths = await splitVideoIntoChunks(fileId, videoPath, fileDir, numChunks);
     } else {
       // Resume: chunks already exist, go straight to transcribing
       await updateStatus(fileId, {
@@ -80,17 +81,18 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
         progress: 0,
         numChunks,
       });
-    }
 
-    // Get chunk paths (already created in fresh start, or existing on resume)
-    const chunkPaths = files
-      .filter((f) => f.match(/^chunk_\d+\.mp4$/))
-      .sort((a, b) => {
-        const numA = parseInt(a.match(/\d+/)![0]);
-        const numB = parseInt(b.match(/\d+/)![0]);
-        return numA - numB;
-      })
-      .map((f) => path.join(fileDir, f));
+      // Get existing chunk paths from directory (freshly read to ensure accuracy)
+      const updatedFiles = await fs.readdir(fileDir);
+      chunkPaths = updatedFiles
+        .filter((f) => f.match(/^chunk_\d+\.mp4$/))
+        .sort((a, b) => {
+          const numA = parseInt(a.match(/\d+/)![0]);
+          const numB = parseInt(b.match(/\d+/)![0]);
+          return numA - numB;
+        })
+        .map((f) => path.join(fileDir, f));
+    }
 
     // Transcribe each chunk
     const allSubtitles: SubtitleEntry[][] = [];
