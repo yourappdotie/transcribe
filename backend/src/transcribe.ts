@@ -32,40 +32,65 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     const duration = await getVideoDuration(inputPath);
     const numChunks = Math.ceil(duration / CHUNK_DURATION);
 
-    // Reset progress for fresh start (important for resume)
-    await updateStatus(fileId, {
-      step: "converting",
-      message: `Converting to MP4 if needed...`,
-      progress: 0,
-      numChunks,
-    });
+    // Check if this is a resume (chunks already exist)
+    const files = await fs.readdir(fileDir);
+    const existingChunks = files.filter((f) => f.match(/^chunk_\d+\.mp4$/)).length;
+    const isResume = existingChunks > 0;
 
-    // Handle MOV to MP4 conversion if needed
-    let videoPath = inputPath;
-    if (ext === ".mov") {
-      const mp4Path = path.join(fileDir, `${basename}.mp4`);
-      const mp4Exists = await fs
-        .access(mp4Path)
-        .then(() => true)
-        .catch(() => false);
+    if (!isResume) {
+      // Fresh start: convert and split
+      await updateStatus(fileId, {
+        step: "converting",
+        message: `Converting to MP4 if needed...`,
+        progress: 0,
+        numChunks,
+      });
 
-      if (!mp4Exists) {
-        await runCommand("ffmpeg", [
-          "-y",
-          "-loglevel",
-          "error",
-          "-i",
-          inputPath,
-          "-c",
-          "copy",
-          mp4Path,
-        ]);
+      // Handle MOV to MP4 conversion if needed
+      let videoPath = inputPath;
+      if (ext === ".mov") {
+        const mp4Path = path.join(fileDir, `${basename}.mp4`);
+        const mp4Exists = await fs
+          .access(mp4Path)
+          .then(() => true)
+          .catch(() => false);
+
+        if (!mp4Exists) {
+          await runCommand("ffmpeg", [
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            inputPath,
+            "-c",
+            "copy",
+            mp4Path,
+          ]);
+        }
+        videoPath = mp4Path;
       }
-      videoPath = mp4Path;
+
+      // Split video into chunks
+      await splitVideoIntoChunks(fileId, videoPath, fileDir, numChunks);
+    } else {
+      // Resume: chunks already exist, go straight to transcribing
+      await updateStatus(fileId, {
+        step: "transcribing",
+        message: `Resuming transcription (skipping conversion)...`,
+        progress: 0,
+        numChunks,
+      });
     }
 
-    // Split video into chunks
-    const chunkPaths = await splitVideoIntoChunks(fileId, videoPath, fileDir, numChunks);
+    // Get chunk paths (already created in fresh start, or existing on resume)
+    const chunkPaths = files
+      .filter((f) => f.match(/^chunk_\d+\.mp4$/))
+      .sort((a, b) => {
+        const numA = parseInt(a.match(/\d+/)![0]);
+        const numB = parseInt(b.match(/\d+/)![0]);
+        return numA - numB;
+      })
+      .map((f) => path.join(fileDir, f));
 
     // Transcribe each chunk
     const allSubtitles: SubtitleEntry[][] = [];
