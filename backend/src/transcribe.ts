@@ -63,13 +63,7 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     }
 
     // Split video into chunks
-    await updateStatus(fileId, {
-      step: "converting",
-      message: `Splitting video into ${numChunks} chunks...`,
-      progress: 0,
-    });
-
-    const chunkPaths = await splitVideoIntoChunks(videoPath, fileDir, numChunks);
+    const chunkPaths = await splitVideoIntoChunks(fileId, videoPath, fileDir, numChunks);
 
     // Transcribe each chunk
     const allSubtitles: SubtitleEntry[][] = [];
@@ -191,6 +185,7 @@ async function getVideoDuration(filePath: string): Promise<number> {
 }
 
 async function splitVideoIntoChunks(
+  fileId: string,
   videoPath: string,
   fileDir: string,
   numChunks: number
@@ -201,6 +196,14 @@ async function splitVideoIntoChunks(
     const startTime = i * CHUNK_DURATION;
     const duration = CHUNK_DURATION + CHUNK_OVERLAP;
     const chunkPath = path.join(fileDir, `chunk_${i + 1}.mp4`);
+    const chunkNum = i + 1;
+    const progress = Math.round((i / numChunks) * 100);
+
+    await updateStatus(fileId, {
+      step: "converting",
+      message: `Splitting chunk ${chunkNum}/${numChunks}...`,
+      progress,
+    });
 
     await runCommand("ffmpeg", [
       "-y",
