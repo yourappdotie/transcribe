@@ -71,6 +71,21 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
 
     for (let i = 0; i < chunkPaths.length; i++) {
       const chunkNum = i + 1;
+      const srtPath = path.join(fileDir, `chunk_${chunkNum}.srt`);
+
+      // Check if this chunk is already transcribed
+      try {
+        await fs.access(srtPath);
+        console.log(`Chunk ${chunkNum} already transcribed, skipping...`);
+
+        // Read existing subtitles for merging
+        const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
+        allSubtitles.push(subtitles);
+        continue;
+      } catch {
+        // File doesn't exist, proceed with transcription
+      }
+
       const progress = Math.round((i / chunkPaths.length) * 100);
 
       await updateStatus(fileId, {
@@ -80,7 +95,6 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       });
 
       const wavPath = path.join(fileDir, `chunk_${chunkNum}.wav`);
-      const srtPath = path.join(fileDir, `chunk_${chunkNum}.srt`);
 
       // Extract audio
       await runCommand("ffmpeg", [
