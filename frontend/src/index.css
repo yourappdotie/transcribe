@@ -31,6 +31,11 @@
   }
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
     "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
@@ -458,13 +463,33 @@ body {
   background-color: var(--bg-secondary);
   border-radius: 8px;
   margin-bottom: 1rem;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.transcription-progress.stalled {
+  border-color: var(--warning);
+  background-color: rgba(245, 158, 11, 0.1);
 }
 
 .progress-info {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.last-update {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0.25rem 0 0 0;
+}
+
+.last-update.warning {
+  color: var(--warning);
+  font-weight: 600;
+  animation: pulse 1s infinite;
 }
 
 .progress-message {

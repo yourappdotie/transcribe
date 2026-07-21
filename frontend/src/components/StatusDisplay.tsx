@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { getDownloadUrl, type FileStatus } from "../api";
 import SubtitleEditor from "./SubtitleEditor";
 import OriginalVideoPlayback from "./OriginalVideoPlayback";
@@ -76,6 +76,34 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
   const isError = status.step === "error";
   const [showEditor, setShowEditor] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [lastProgress, setLastProgress] = useState<number>(status.progress || 0);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
+  const [timeSinceUpdate, setTimeSinceUpdate] = useState<string>("0s");
+
+  // Track when progress updates
+  useEffect(() => {
+    if (status.progress !== lastProgress) {
+      setLastProgress(status.progress || 0);
+      setLastUpdateTime(new Date());
+    }
+  }, [status.progress, lastProgress]);
+
+  // Update the timer display every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const diff = Math.floor((now.getTime() - lastUpdateTime.getTime()) / 1000);
+      if (diff < 60) {
+        setTimeSinceUpdate(`${diff}s`);
+      } else {
+        const mins = Math.floor(diff / 60);
+        const secs = diff % 60;
+        setTimeSinceUpdate(`${mins}m ${secs}s`);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [lastUpdateTime]);
 
   const handleSeek = (seconds: number) => {
     if (videoRef.current) {
@@ -172,9 +200,14 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
 
         {!isComplete && !isError && status.step === "transcribing" && (
           <>
-            <div className="transcription-progress">
+            <div className={`transcription-progress ${timeSinceUpdate.includes("m") && parseInt(timeSinceUpdate) > 5 ? "stalled" : ""}`}>
               <div className="progress-info">
-                <p className="progress-message">{status.message}</p>
+                <div>
+                  <p className="progress-message">{status.message}</p>
+                  <p className={`last-update ${timeSinceUpdate.includes("m") && parseInt(timeSinceUpdate) > 5 ? "warning" : ""}`}>
+                    Last update: {timeSinceUpdate} ago
+                  </p>
+                </div>
                 <p className="progress-percent">{status.progress || 0}%</p>
               </div>
               <div className="progress-bar-container">
