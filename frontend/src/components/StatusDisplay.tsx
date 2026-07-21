@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { getDownloadUrl, type FileStatus } from "../api";
 import SubtitleEditor from "./SubtitleEditor";
 import OriginalVideoPlayback from "./OriginalVideoPlayback";
@@ -75,6 +75,13 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
   const isComplete = status.step === "completed";
   const isError = status.step === "error";
   const [showEditor, setShowEditor] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handleSeek = (seconds: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = seconds;
+    }
+  };
 
   return (
     <div className={`job-card ${status.step}`}>
@@ -168,6 +175,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
             <div className="player-section">
               <h4>Original Video</h4>
               <OriginalVideoPlayback
+                ref={videoRef}
                 fileId={fileId}
                 filename={job.originalFilename}
                 liveVtt={job.liveVtt}
@@ -176,7 +184,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
 
             <div className="editor-section">
               <h4>Live Transcription (updates as chunks complete)</h4>
-              <SubtitleEditor fileId={fileId} isLive={true} liveVtt={job.liveVtt} />
+              <SubtitleEditor fileId={fileId} isLive={true} liveVtt={job.liveVtt} onSeek={handleSeek} />
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, forwardRef } from "react";
 import { getDownloadUrl } from "../api";
 
 interface OriginalVideoPlaybackProps {
@@ -7,14 +7,22 @@ interface OriginalVideoPlaybackProps {
   liveVtt?: string;
 }
 
-export default function OriginalVideoPlayback({
-  fileId,
-  filename,
-  liveVtt,
-}: OriginalVideoPlaybackProps) {
+const OriginalVideoPlayback = forwardRef<HTMLVideoElement, OriginalVideoPlaybackProps>(
+  ({ fileId, filename, liveVtt }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<HTMLTrackElement>(null);
   const [vttUrl, setVttUrl] = useState<string>("");
+
+  // Sync ref to parent
+  useEffect(() => {
+    if (ref) {
+      if (typeof ref === "function") {
+        ref(videoRef.current);
+      } else {
+        ref.current = videoRef.current;
+      }
+    }
+  }, [ref]);
 
   const videoUrl = getDownloadUrl(fileId, filename);
   const ext = filename.toLowerCase().split(".").pop();
@@ -67,4 +75,9 @@ export default function OriginalVideoPlayback({
       <p className="filename">{filename}</p>
     </div>
   );
-}
+  }
+);
+
+OriginalVideoPlayback.displayName = "OriginalVideoPlayback";
+
+export default OriginalVideoPlayback;

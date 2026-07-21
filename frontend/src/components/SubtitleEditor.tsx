@@ -12,9 +12,10 @@ interface SubtitleEditorProps {
   onSaved?: () => void;
   isLive?: boolean;
   liveVtt?: string;
+  onSeek?: (seconds: number) => void;
 }
 
-export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false, liveVtt }: SubtitleEditorProps) {
+export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false, liveVtt, onSeek }: SubtitleEditorProps) {
   const [entries, setEntries] = useState<SubtitleEntry[]>([]);
   const [history, setHistory] = useState<SubtitleEntry[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -162,6 +163,21 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
     }
   };
 
+  const timeToSeconds = (timeStr: string): number => {
+    const parts = timeStr.replace(",", ".").split(":");
+    const hours = parseInt(parts[0], 10) || 0;
+    const minutes = parseInt(parts[1], 10) || 0;
+    const seconds = parseFloat(parts[2]) || 0;
+    return hours * 3600 + minutes * 60 + seconds;
+  };
+
+  const handleEntryClick = (timecode: string) => {
+    if (onSeek) {
+      const seconds = timeToSeconds(timecode);
+      onSeek(seconds);
+    }
+  };
+
   if (isLoading) {
     return <div className="subtitle-editor loading">Loading subtitles...</div>;
   }
@@ -203,7 +219,12 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
 
       <div className="subtitle-entries">
         {entries.map((entry) => (
-          <div key={entry.index} className="subtitle-entry">
+          <div
+            key={entry.index}
+            className="subtitle-entry"
+            onClick={() => handleEntryClick(entry.timecode)}
+            style={{ cursor: onSeek ? "pointer" : "default" }}
+          >
             <div className="entry-header">
               <span className="entry-number">#{entry.index}</span>
               <span className="entry-timecode">{entry.timecode}</span>
