@@ -72,11 +72,19 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     for (let i = 0; i < chunkPaths.length; i++) {
       const chunkNum = i + 1;
       const srtPath = path.join(fileDir, `chunk_${chunkNum}.srt`);
+      const progress = Math.round((i / chunkPaths.length) * 100);
 
       // Check if this chunk is already transcribed
       try {
         await fs.access(srtPath);
         console.log(`Chunk ${chunkNum} already transcribed, skipping...`);
+
+        // Update status to show progress even for skipped chunks
+        await updateStatus(fileId, {
+          step: "transcribing",
+          message: `Transcribing chunk ${chunkNum}/${numChunks}... (resuming)`,
+          progress,
+        });
 
         // Read existing subtitles for merging
         const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
@@ -85,8 +93,6 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       } catch {
         // File doesn't exist, proceed with transcription
       }
-
-      const progress = Math.round((i / chunkPaths.length) * 100);
 
       await updateStatus(fileId, {
         step: "transcribing",
