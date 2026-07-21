@@ -12,6 +12,10 @@ interface TranscriptionJob {
 export default function App() {
   const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
 
+  const isProcessing = jobs.some(
+    (job) => job.status.step !== "completed" && job.status.step !== "error"
+  );
+
   const handleUpload = async (file: File) => {
     try {
       const { fileId, filename } = await uploadFile(file);
@@ -60,7 +64,7 @@ export default function App() {
       </header>
 
       <main className="main">
-        <Uploader onUpload={handleUpload} />
+        {!isProcessing && <Uploader onUpload={handleUpload} />}
 
         <div className="jobs">
           {jobs.length === 0 ? (
