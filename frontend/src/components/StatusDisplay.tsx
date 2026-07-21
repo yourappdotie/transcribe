@@ -111,24 +111,6 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
     }
   };
 
-  const [healthStatus, setHealthStatus] = useState<{
-    processing: boolean;
-    lastActivity: string | null;
-    secondsSinceModified: number | null;
-    healthy: boolean;
-  } | null>(null);
-
-  const checkHealth = async () => {
-    try {
-      const response = await fetch(`/api/transcription/${fileId}/health`);
-      if (response.ok) {
-        const data = await response.json();
-        setHealthStatus(data);
-      }
-    } catch (err) {
-      console.error("Health check error:", err);
-    }
-  };
 
   return (
     <div className={`job-card ${status.step}`}>
@@ -227,41 +209,9 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
                     Last update: {timeSinceUpdate} ago
                   </p>
                 </div>
-                <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-                  <button
-                    onClick={checkHealth}
-                    style={{
-                      padding: "0.5rem 1rem",
-                      fontSize: "0.85rem",
-                      backgroundColor: "var(--primary)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Check Status
-                  </button>
-                  <p className="progress-percent">{status.progress || 0}%</p>
-                </div>
+                <p className="progress-percent">{status.progress || 0}%</p>
               </div>
-              {healthStatus && (
-                <div className={`health-check ${healthStatus.healthy ? "healthy" : "unhealthy"}`}>
-                  {healthStatus.processing ? (
-                    <>
-                      <span className="health-dot" style={{ backgroundColor: healthStatus.healthy ? "#10b981" : "#ef4444" }}></span>
-                      <span>
-                        Processing {healthStatus.lastActivity} — updated {healthStatus.secondsSinceModified}s ago
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="health-dot" style={{ backgroundColor: "#6b7280" }}></span>
-                      <span>Waiting for next chunk...</span>
-                    </>
-                  )}
-                </div>
-              )}
+            </div>
               <div className="progress-bar-container">
                 <div className="progress-bar" style={{ width: `${status.progress || 0}%` }}></div>
               </div>

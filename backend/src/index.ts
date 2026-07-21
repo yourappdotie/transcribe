@@ -336,40 +336,6 @@ app.post("/api/transcription/:fileId/resume", async (req: Request, res: Response
   }
 });
 
-app.get("/api/transcription/:fileId/health", async (req: Request, res: Response) => {
-  try {
-    const fileId = req.params.fileId;
-    const fileDir = path.join(uploadsDir, fileId);
-    const files = await fs.readdir(fileDir);
-
-    // Find the most recent .wav file (being processed)
-    let mostRecentWav: { file: string; mtime: number } | null = null;
-
-    for (const file of files) {
-      if (file.endsWith(".wav") && file.startsWith("chunk_")) {
-        const filePath = path.join(fileDir, file);
-        const stat = await fs.stat(filePath);
-        if (!mostRecentWav || stat.mtimeMs > mostRecentWav.mtime) {
-          mostRecentWav = { file, mtime: stat.mtimeMs };
-        }
-      }
-    }
-
-    const now = Date.now();
-    const secondsSinceModified = mostRecentWav ? (now - mostRecentWav.mtime) / 1000 : null;
-
-    res.json({
-      processing: !!mostRecentWav,
-      lastActivity: mostRecentWav?.file || null,
-      secondsSinceModified: secondsSinceModified ? Math.round(secondsSinceModified) : null,
-      healthy: secondsSinceModified === null || secondsSinceModified < 30,
-    });
-  } catch (err) {
-    console.error("Health check error:", err);
-    res.status(500).json({ error: "Health check failed" });
-  }
-});
-
 app.get("/api/transcription/:fileId/stream", async (req: Request, res: Response) => {
   const fileId = req.params.fileId;
 
