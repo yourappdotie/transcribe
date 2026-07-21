@@ -13,7 +13,7 @@ interface SubtitleEditorProps {
   isLive?: boolean;
 }
 
-export default function SubtitleEditor({ fileId, vttUrl, onSaved }: SubtitleEditorProps) {
+export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false }: SubtitleEditorProps) {
   const [entries, setEntries] = useState<SubtitleEntry[]>([]);
   const [history, setHistory] = useState<SubtitleEntry[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
