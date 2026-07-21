@@ -32,6 +32,7 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     const duration = await getVideoDuration(inputPath);
     const numChunks = Math.ceil(duration / CHUNK_DURATION);
 
+    // Reset progress for fresh start (important for resume)
     await updateStatus(fileId, {
       step: "converting",
       message: `Converting to MP4 if needed...`,

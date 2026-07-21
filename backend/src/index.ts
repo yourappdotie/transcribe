@@ -7,7 +7,7 @@ import fs from "fs/promises";
 import { mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { transcribeFile, getVideoDuration } from "./transcribe.js";
-import { getFileStatus, listResults, statusEmitter } from "./storage.js";
+import { getFileStatus, listResults, statusEmitter, updateStatus } from "./storage.js";
 
 const CHUNK_DURATION = 60;
 const CHUNK_OVERLAP = 5;
@@ -299,6 +299,40 @@ app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) =>
   } catch (err) {
     console.error("Update subtitles error:", err);
     res.status(500).json({ error: "Failed to update subtitles" });
+  }
+});
+
+app.post("/api/transcription/:fileId/resume", async (req: Request, res: Response) => {
+  try {
+    const fileId = req.params.fileId;
+    const fileDir = path.join(uploadsDir, fileId);
+
+    // Find the original video file
+    const files = await fs.readdir(fileDir);
+    const videoFile = files.find((f) => f.match(/\.(mp4|mov|webm|mkv)$/i));
+
+    if (!videoFile) {
+      res.status(400).json({ error: "No video file found" });
+      return;
+    }
+
+    const filePath = path.join(fileDir, videoFile);
+
+    // Reset progress in status file
+    await updateStatus(fileId, {
+      progress: 0,
+      message: "Resuming transcription...",
+    });
+
+    res.json({ success: true, message: "Transcription resuming" });
+
+    // Start transcription in background
+    transcribeFile(fileId, filePath).catch((err) => {
+      console.error(`Transcription failed for ${fileId}:`, err);
+    });
+  } catch (err) {
+    console.error("Resume transcription error:", err);
+    res.status(500).json({ error: "Failed to resume transcription" });
   }
 });
 

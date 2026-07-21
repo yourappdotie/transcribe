@@ -68,6 +68,16 @@ export default function App() {
 
   const handleResume = async (fileId: string, filename: string) => {
     try {
+      // Call backend to resume transcription
+      const resumeResponse = await fetch(`/api/transcription/${fileId}/resume`, {
+        method: "POST",
+      });
+
+      if (!resumeResponse.ok) {
+        throw new Error("Failed to resume transcription");
+      }
+
+      // Get fresh status with progress reset to 0
       const status = await getStatus(fileId);
 
       const newJob: TranscriptionJob = {
@@ -78,7 +88,7 @@ export default function App() {
       };
 
       setJobs((prev) => [newJob, ...prev]);
-      // Polling will start automatically via useEffect
+      // SSE will start automatically via useEffect
     } catch (err) {
       console.error("Resume error:", err);
       alert("Failed to resume job. Please try again.");
