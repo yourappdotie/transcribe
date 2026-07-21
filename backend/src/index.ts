@@ -6,7 +6,7 @@ import path from "path";
 import fs from "fs/promises";
 import { mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
-import { transcribeFile } from "./transcribe.js";
+import { transcribeFile, getVideoDuration } from "./transcribe.js";
 import { getFileStatus, listResults } from "./storage.js";
 
 const CHUNK_DURATION = 60;
@@ -146,13 +146,25 @@ app.get("/api/uploads", async (req: Request, res: Response) => {
           f.match(/\.(mp4|mov|webm|mkv)$/i)
         );
 
+        // Get total chunks from status or calculate from video duration
+        let totalChunks = status.numChunks || 0;
+        if (totalChunks === 0 && videoFile) {
+          try {
+            const videoPath = path.join(folderPath, videoFile);
+            const duration = await getVideoDuration(videoPath);
+            totalChunks = Math.ceil(duration / CHUNK_DURATION);
+          } catch (err) {
+            // If we can't get duration, leave totalChunks as 0
+          }
+        }
+
         uploads.push({
           fileId: folder,
           filename: status.filename || videoFile || "Unknown",
           status: status.step,
           progress: status.progress || 0,
           chunksCompleted: srtChunks,
-          totalChunks: status.numChunks || 0,
+          totalChunks,
           createdAt: stat.birthtime,
         });
       } catch (err) {

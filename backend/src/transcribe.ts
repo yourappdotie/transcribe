@@ -155,7 +155,7 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
   }
 }
 
-async function getVideoDuration(filePath: string): Promise<number> {
+export async function getVideoDuration(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ffprobe", [
       "-v",
