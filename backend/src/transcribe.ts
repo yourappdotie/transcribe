@@ -33,22 +33,20 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     const numChunks = Math.ceil(duration / CHUNK_DURATION);
 
     // Check if this is a resume (chunks already exist)
-    let chunkPaths: string[] = [];
     const files = await fs.readdir(fileDir);
-    const existingChunks = files.filter((f) => f.match(/^chunk_\d+\.mp4$/)).length;
-    const isResume = existingChunks > 0;
+    const existingWavChunks = files.filter((f) => f.match(/^chunk_\d+\.wav$/)).length;
+    const isResume = existingWavChunks > 0;
 
     if (!isResume) {
-      // Fresh start: convert and split
+      // Fresh start: prepare for chunking
       await updateStatus(fileId, {
         step: "converting",
-        message: `Converting to MP4 if needed...`,
+        message: `Preparing audio extraction...`,
         progress: 0,
         numChunks,
       });
 
-      // Handle MOV to MP4 conversion if needed
-      let videoPath = inputPath;
+      // Handle MOV to MP4 conversion if needed (for audio extraction source)
       if (ext === ".mov") {
         const mp4Path = path.join(fileDir, `${basename}.mp4`);
         const mp4Exists = await fs
@@ -68,39 +66,30 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
             mp4Path,
           ]);
         }
-        videoPath = mp4Path;
       }
-
-      // Split video into chunks and get the chunk paths directly
-      chunkPaths = await splitVideoIntoChunks(fileId, videoPath, fileDir, numChunks);
     } else {
       // Resume: chunks already exist, go straight to transcribing
       await updateStatus(fileId, {
         step: "transcribing",
-        message: `Resuming transcription (skipping conversion)...`,
+        message: `Resuming transcription (skipping audio extraction)...`,
         progress: 0,
         numChunks,
       });
-
-      // Get existing chunk paths from directory (freshly read to ensure accuracy)
-      const updatedFiles = await fs.readdir(fileDir);
-      chunkPaths = updatedFiles
-        .filter((f) => f.match(/^chunk_\d+\.mp4$/))
-        .sort((a, b) => {
-          const numA = parseInt(a.match(/\d+/)![0]);
-          const numB = parseInt(b.match(/\d+/)![0]);
-          return numA - numB;
-        })
-        .map((f) => path.join(fileDir, f));
     }
+
+    // Determine the audio source (converted MP4 if MOV, otherwise original)
+    const audioSource = ext === ".mov"
+      ? path.join(fileDir, `${basename}.mp4`)
+      : inputPath;
 
     // Transcribe each chunk
     const allSubtitles: SubtitleEntry[][] = [];
 
-    for (let i = 0; i < chunkPaths.length; i++) {
+    for (let i = 0; i < numChunks; i++) {
       const chunkNum = i + 1;
+      const wavPath = path.join(fileDir, `chunk_${chunkNum}.wav`);
       const srtPath = path.join(fileDir, `chunk_${chunkNum}.srt`);
-      const progress = Math.round((i / chunkPaths.length) * 100);
+      const progress = Math.round((i / numChunks) * 100);
 
       // Check if this chunk is already transcribed
       try {
@@ -128,15 +117,20 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
         progress,
       });
 
-      const wavPath = path.join(fileDir, `chunk_${chunkNum}.wav`);
+      // Extract audio chunk directly from source
+      const startTime = i * CHUNK_DURATION;
+      const duration = CHUNK_DURATION + CHUNK_OVERLAP;
 
-      // Extract audio
       await runCommand("ffmpeg", [
         "-y",
         "-loglevel",
         "error",
+        "-ss",
+        startTime.toString(),
         "-i",
-        chunkPaths[i],
+        audioSource,
+        "-t",
+        duration.toString(),
         "-ar",
         "16000",
         "-ac",
@@ -162,9 +156,7 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
       allSubtitles.push(subtitles);
 
-      // Cleanup chunk video and audio files (keep SRT for live transcription)
-      await fs.unlink(chunkPaths[i]);
-      await fs.unlink(wavPath);
+      // KEEP ALL FILES - no cleanup
     }
 
     // Merge subtitles with overlap reconciliation
