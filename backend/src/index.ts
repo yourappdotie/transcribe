@@ -7,10 +7,13 @@ import fs from "fs/promises";
 import { mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { transcribeFile, getVideoDuration } from "./transcribe.js";
-import { getFileStatus, listResults } from "./storage.js";
+import { getFileStatus, listResults, statusEmitter } from "./storage.js";
 
 const CHUNK_DURATION = 60;
 const CHUNK_OVERLAP = 5;
+
+// Map to track active SSE clients per fileId
+const sseClients = new Map<string, Set<Response>>();
 
 interface SubtitleEntry {
   index: number;
@@ -29,6 +32,18 @@ app.use(cors());
 app.use(express.json());
 
 const uploadsDir = path.join(__dirname, "../uploads");
+
+function broadcastStatusUpdate(fileId: string, status: any, liveVtt?: string) {
+  const clients = sseClients.get(fileId);
+  if (!clients) return;
+
+  const data = { status, ...(liveVtt && { liveVtt }) };
+  const message = `data: ${JSON.stringify(data)}\n\n`;
+
+  clients.forEach((res) => {
+    res.write(message);
+  });
+}
 
 const storage: StorageEngine = multer.diskStorage({
   destination: (req: Request & { fileId?: string }, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
@@ -287,6 +302,56 @@ app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) =>
   }
 });
 
+app.get("/api/transcription/:fileId/stream", async (req: Request, res: Response) => {
+  const fileId = req.params.fileId;
+
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  // Send initial status
+  try {
+    const status = await getFileStatus(fileId);
+    let liveVtt: string | undefined;
+
+    if (status.step === "transcribing" || status.step === "converting" || status.step === "extracting") {
+      try {
+        const response = await fetch(`http://localhost:${port}/api/transcription/${fileId}/live`);
+        if (response.ok) {
+          const data = await response.json();
+          liveVtt = data.vtt;
+        }
+      } catch {
+        // Live VTT fetch failed, continue
+      }
+    }
+
+    broadcastStatusUpdate(fileId, status, liveVtt);
+  } catch (err) {
+    console.error("SSE initial status error:", err);
+  }
+
+  // Register this client
+  if (!sseClients.has(fileId)) {
+    sseClients.set(fileId, new Set());
+  }
+  sseClients.get(fileId)!.add(res);
+
+  // Handle client disconnect
+  req.on("close", () => {
+    const clients = sseClients.get(fileId);
+    if (clients) {
+      clients.delete(res);
+      if (clients.size === 0) {
+        sseClients.delete(fileId);
+      }
+    }
+    res.end();
+  });
+});
+
 app.delete("/api/uploads/:fileId", async (req: Request, res: Response) => {
   try {
     const fileDir = path.join(uploadsDir, req.params.fileId);
@@ -300,6 +365,25 @@ app.delete("/api/uploads/:fileId", async (req: Request, res: Response) => {
 
 app.listen(port, () => {
   console.log(`Transcribe backend running on http://localhost:${port}`);
+});
+
+// Listen for status updates and broadcast via SSE
+statusEmitter.on("update", async (fileId: string, status: any) => {
+  let liveVtt: string | undefined;
+
+  if (status.step === "transcribing" || status.step === "converting" || status.step === "extracting") {
+    try {
+      const response = await fetch(`http://localhost:${port}/api/transcription/${fileId}/live`);
+      if (response.ok) {
+        const data = await response.json();
+        liveVtt = data.vtt;
+      }
+    } catch {
+      // Live VTT fetch failed, continue
+    }
+  }
+
+  broadcastStatusUpdate(fileId, status, liveVtt);
 });
 
 // Helper functions for subtitle parsing

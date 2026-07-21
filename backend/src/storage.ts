@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
+import { EventEmitter } from "events";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -7,6 +8,8 @@ const __dirname = path.dirname(__filename);
 
 const uploadsDir = path.join(__dirname, "../uploads");
 const modelsDir = path.join(__dirname, "../../models");
+
+export const statusEmitter = new EventEmitter();
 
 export interface FileStatus {
   fileId: string;
@@ -35,6 +38,9 @@ export async function updateStatus(fileId: string, status: Partial<FileStatus>):
   const updated = { fileId, ...current, ...status };
 
   await fs.writeFile(statusPath, JSON.stringify(updated, null, 2));
+
+  // Emit status update event for SSE
+  statusEmitter.emit("update", fileId, updated);
 }
 
 export async function getFileStatus(fileId: string): Promise<FileStatus> {

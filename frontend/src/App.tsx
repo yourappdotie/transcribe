@@ -10,61 +10,57 @@ interface TranscriptionJob {
   originalFilename: string;
   status: FileStatus;
   liveVtt?: string;
+  eventSource?: EventSource;
 }
 
 export default function App() {
   const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
-  const pollIntervalRef = useRef<NodeJS.Timeout>();
 
-  // Single unified polling for all active jobs
+  // Set up SSE for active jobs
   useEffect(() => {
     const activeJobs = jobs.filter(
-      (job) => job.status.step !== "completed" && job.status.step !== "error"
+      (job) => job.status.step !== "completed" && job.status.step !== "error" && !job.eventSource
     );
 
-    if (activeJobs.length === 0) {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-      return;
-    }
+    for (const job of activeJobs) {
+      const eventSource = new EventSource(`/api/transcription/${job.fileId}/stream`);
 
-    const poll = async () => {
-      for (const job of activeJobs) {
+      eventSource.onmessage = (event) => {
         try {
-          // Fetch status
-          const status = await getStatus(job.fileId);
-
-          // Fetch live VTT if transcribing
-          let liveVtt;
-          if (status.step === "transcribing" || status.step === "converting" || status.step === "extracting") {
-            const response = await fetch(`/api/transcription/${job.fileId}/live`);
-            if (response.ok) {
-              const data = await response.json();
-              liveVtt = data.vtt;
-            }
-          }
-
+          const data = JSON.parse(event.data);
           setJobs((prev) =>
             prev.map((j) =>
-              j.fileId === job.fileId ? { ...j, status, liveVtt } : j
+              j.fileId === job.fileId
+                ? { ...j, status: data.status, liveVtt: data.liveVtt || j.liveVtt, eventSource }
+                : j
             )
           );
         } catch (err) {
-          console.error(`Error polling job ${job.fileId}:`, err);
+          console.error(`Error parsing SSE data for ${job.fileId}:`, err);
         }
-      }
-    };
+      };
 
-    poll();
-    pollIntervalRef.current = setInterval(poll, 5000);
+      eventSource.onerror = () => {
+        console.error(`SSE error for ${job.fileId}`);
+        eventSource.close();
+        setJobs((prev) =>
+          prev.map((j) => (j.fileId === job.fileId ? { ...j, eventSource: undefined } : j))
+        );
+      };
+
+      setJobs((prev) =>
+        prev.map((j) => (j.fileId === job.fileId ? { ...j, eventSource } : j))
+      );
+    }
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
+      jobs.forEach((job) => {
+        if (job.eventSource) {
+          job.eventSource.close();
+        }
+      });
     };
-  }, [jobs]);
+  }, [jobs.filter((j) => j.status.step !== "completed" && j.status.step !== "error").map((j) => j.fileId).join()]);
 
   const isProcessing = jobs.some(
     (job) => job.status.step !== "completed" && job.status.step !== "error"
@@ -108,22 +104,7 @@ export default function App() {
       };
 
       setJobs((prev) => [newJob, ...prev]);
-
-      // Poll for status updates every 5 seconds
-      const pollInterval = setInterval(async () => {
-        try {
-          const status = await getStatus(fileId);
-          setJobs((prev) =>
-            prev.map((job) => (job.fileId === fileId ? { ...job, status } : job))
-          );
-
-          if (status.step === "completed" || status.step === "error") {
-            clearInterval(pollInterval);
-          }
-        } catch (err) {
-          console.error("Error polling status:", err);
-        }
-      }, 5000);
+      // SSE will start automatically via useEffect
     } catch (err) {
       console.error("Upload error:", err);
       alert("Upload failed. Please try again.");
