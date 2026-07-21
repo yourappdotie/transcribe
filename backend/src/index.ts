@@ -320,7 +320,7 @@ app.get("/api/transcription/:fileId/stream", async (req: Request, res: Response)
       try {
         const response = await fetch(`http://localhost:${port}/api/transcription/${fileId}/live`);
         if (response.ok) {
-          const data = await response.json();
+          const data = (await response.json()) as { vtt?: string };
           liveVtt = data.vtt;
         }
       } catch {
@@ -375,7 +375,7 @@ statusEmitter.on("update", async (fileId: string, status: any) => {
     try {
       const response = await fetch(`http://localhost:${port}/api/transcription/${fileId}/live`);
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as { vtt?: string };
         liveVtt = data.vtt;
       }
     } catch {
