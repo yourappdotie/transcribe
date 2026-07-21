@@ -39,13 +39,7 @@ export default function OriginalVideoPlayback({
       trackRef.current.src = url;
       setVttUrl(url);
     }
-
-    return () => {
-      if (vttUrl) {
-        URL.revokeObjectURL(vttUrl);
-      }
-    };
-  }, [liveVtt, vttUrl]);
+  }, [liveVtt]);
 
   return (
     <div className="original-video-section">
