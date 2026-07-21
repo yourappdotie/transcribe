@@ -4,7 +4,7 @@ import multer, { StorageEngine } from "multer";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs/promises";
-import { mkdirSync } from "fs";
+import { mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { transcribeFile } from "./transcribe.js";
 import { getFileStatus, listResults } from "./storage.js";
@@ -273,6 +273,17 @@ app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) =>
   } catch (err) {
     console.error("Update subtitles error:", err);
     res.status(500).json({ error: "Failed to update subtitles" });
+  }
+});
+
+app.delete("/api/uploads/:fileId", async (req: Request, res: Response) => {
+  try {
+    const fileDir = path.join(uploadsDir, req.params.fileId);
+    rmSync(fileDir, { recursive: true, force: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete upload error:", err);
+    res.status(500).json({ error: "Failed to delete upload" });
   }
 });
 
