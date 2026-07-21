@@ -311,6 +311,12 @@ app.get("/api/transcription/:fileId/stream", async (req: Request, res: Response)
   res.setHeader("Connection", "keep-alive");
   res.setHeader("Access-Control-Allow-Origin", "*");
 
+  // Register this client first
+  if (!sseClients.has(fileId)) {
+    sseClients.set(fileId, new Set());
+  }
+  sseClients.get(fileId)!.add(res);
+
   // Send initial status
   try {
     const status = await getFileStatus(fileId);
@@ -332,12 +338,6 @@ app.get("/api/transcription/:fileId/stream", async (req: Request, res: Response)
   } catch (err) {
     console.error("SSE initial status error:", err);
   }
-
-  // Register this client
-  if (!sseClients.has(fileId)) {
-    sseClients.set(fileId, new Set());
-  }
-  sseClients.get(fileId)!.add(res);
 
   // Handle client disconnect
   req.on("close", () => {
