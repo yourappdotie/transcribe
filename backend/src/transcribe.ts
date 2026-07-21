@@ -454,18 +454,24 @@ async function runTranscribeCommand(
       stderr += output;
 
       // Parse progress from this chunk (0-100%)
-      const match = output.match(/progress\s*=\s*(\d+)%/);
+      // whisper-cli outputs: "[00:15.600 --> 00:17.280]" or "progress = 50%" format
+      const match = output.match(/progress\s*[=:]\s*(\d+)%?/i) ||
+                   output.match(/(\d+)%/);
+
       if (match) {
         const chunkProgress = parseInt(match[1], 10);
         const overallProgress = Math.round(
           ((chunkNum - 1 + chunkProgress / 100) / totalChunks) * 100
         );
+
+        console.log(`[${fileId}] Chunk ${chunkNum}: ${chunkProgress}% (overall: ${overallProgress}%)`);
+
         updateStatus(fileId, {
           step: "transcribing",
           message: `Transcribing chunk ${chunkNum}/${totalChunks}... ${chunkProgress}%`,
           progress: overallProgress,
-        }).catch(() => {
-          // Ignore errors
+        }).catch((err) => {
+          console.error(`Failed to update status:`, err);
         });
       }
     });
