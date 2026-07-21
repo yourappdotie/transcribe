@@ -117,6 +117,63 @@ app.get("/api/download/:fileId/:filename", async (req: Request, res: Response) =
   }
 });
 
+app.get("/api/uploads", async (req: Request, res: Response) => {
+  try {
+    const uploadsDir = path.join(__dirname, "../uploads");
+    const folders = await fs.readdir(uploadsDir);
+    const uploads = [];
+
+    for (const folder of folders) {
+      try {
+        const folderPath = path.join(uploadsDir, folder);
+        const stat = await fs.stat(folderPath);
+
+        if (!stat.isDirectory()) continue;
+
+        const statusPath = path.join(folderPath, ".status.json");
+        let status;
+        try {
+          const content = await fs.readFile(statusPath, "utf-8");
+          status = JSON.parse(content);
+        } catch {
+          continue;
+        }
+
+        // Count chunk files to determine progress
+        const files = await fs.readdir(folderPath);
+        const wavChunks = files.filter((f) => f.match(/^chunk_\d+\.wav$/)).length;
+        const srtChunks = files.filter((f) => f.match(/^chunk_\d+\.srt$/)).length;
+        const videoFile = files.find((f) =>
+          f.match(/\.(mp4|mov|webm|mkv)$/i)
+        );
+
+        uploads.push({
+          fileId: folder,
+          filename: status.filename || videoFile || "Unknown",
+          status: status.step,
+          progress: status.progress || 0,
+          wavChunks,
+          srtChunks,
+          createdAt: stat.birthtime,
+        });
+      } catch (err) {
+        console.error(`Error processing folder ${folder}:`, err);
+      }
+    }
+
+    // Sort by creation date, newest first
+    uploads.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    res.json(uploads);
+  } catch (err) {
+    console.error("Error listing uploads:", err);
+    res.status(500).json({ error: "Failed to list uploads" });
+  }
+});
+
 app.get("/api/transcription/:fileId/live", async (req: Request, res: Response) => {
   try {
     const fileDir = path.join(uploadsDir, req.params.fileId);

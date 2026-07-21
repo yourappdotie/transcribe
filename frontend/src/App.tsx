@@ -3,6 +3,7 @@ import { uploadFile, getStatus, type FileStatus } from "./api";
 import Uploader from "./components/Uploader";
 import StatusDisplay from "./components/StatusDisplay";
 import OriginalVideoPlayback from "./components/OriginalVideoPlayback";
+import PreviousUploads from "./components/PreviousUploads";
 
 interface TranscriptionJob {
   fileId: string;
@@ -17,6 +18,47 @@ export default function App() {
   const isProcessing = jobs.some(
     (job) => job.status.step !== "completed" && job.status.step !== "error"
   );
+
+  const handleResume = async (fileId: string, filename: string) => {
+    try {
+      const status = await getStatus(fileId);
+
+      const newJob: TranscriptionJob = {
+        fileId,
+        filename,
+        originalFilename: filename,
+        status,
+      };
+
+      setJobs((prev) => [newJob, ...prev]);
+
+      // Poll for status updates
+      if (status.step !== "completed" && status.step !== "error") {
+        const pollInterval = setInterval(async () => {
+          try {
+            const updatedStatus = await getStatus(fileId);
+            setJobs((prev) =>
+              prev.map((job) =>
+                job.fileId === fileId ? { ...job, status: updatedStatus } : job
+              )
+            );
+
+            if (
+              updatedStatus.step === "completed" ||
+              updatedStatus.step === "error"
+            ) {
+              clearInterval(pollInterval);
+            }
+          } catch (err) {
+            console.error("Error polling status:", err);
+          }
+        }, 5000);
+      }
+    } catch (err) {
+      console.error("Resume error:", err);
+      alert("Failed to resume job. Please try again.");
+    }
+  };
 
   const handleUpload = async (file: File) => {
     try {
@@ -68,7 +110,10 @@ export default function App() {
 
       <main className="main">
         {!isProcessing ? (
-          <Uploader onUpload={handleUpload} />
+          <>
+            <Uploader onUpload={handleUpload} />
+            <PreviousUploads onResume={handleResume} />
+          </>
         ) : (
           jobs.length > 0 && (
             <OriginalVideoPlayback
