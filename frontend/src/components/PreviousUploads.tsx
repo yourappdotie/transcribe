@@ -5,8 +5,8 @@ interface Upload {
   filename: string;
   status: string;
   progress: number;
-  wavChunks: number;
-  srtChunks: number;
+  chunksCompleted: number;
+  totalChunks: number;
   createdAt: string;
 }
 
@@ -83,7 +83,9 @@ export default function PreviousUploads({ onResume }: PreviousUploadsProps) {
           const isComplete = upload.status === "completed";
           const progressPercent = isComplete
             ? 100
-            : Math.round((upload.srtChunks / (upload.wavChunks || 1)) * 100);
+            : upload.totalChunks > 0
+              ? Math.round((upload.chunksCompleted / upload.totalChunks) * 100)
+              : 0;
 
           return (
             <div
@@ -118,9 +120,9 @@ export default function PreviousUploads({ onResume }: PreviousUploadsProps) {
               </div>
               <div className="card-body">
                 <p className="filename">{upload.filename}</p>
-                {!isComplete && upload.srtChunks > 0 && (
+                {!isComplete && upload.totalChunks > 0 && (
                   <p className="progress-text">
-                    {upload.srtChunks} chunks completed
+                    {upload.chunksCompleted}/{upload.totalChunks} chunks completed
                   </p>
                 )}
                 {!isComplete && (

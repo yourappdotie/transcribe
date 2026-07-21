@@ -36,6 +36,7 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       step: "converting",
       message: `Converting to MP4 if needed...`,
       progress: 0,
+      numChunks,
     });
 
     // Handle MOV to MP4 conversion if needed

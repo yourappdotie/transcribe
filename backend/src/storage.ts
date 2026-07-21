@@ -22,6 +22,7 @@ export interface FileStatus {
   startTime?: number;
   endTime?: number;
   duration?: number;
+  numChunks?: number;
 }
 
 export async function updateStatus(fileId: string, status: Partial<FileStatus>): Promise<void> {

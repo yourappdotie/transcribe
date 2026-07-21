@@ -141,7 +141,6 @@ app.get("/api/uploads", async (req: Request, res: Response) => {
 
         // Count chunk files to determine progress
         const files = await fs.readdir(folderPath);
-        const wavChunks = files.filter((f) => /^chunk_\d+\.wav$/.test(f)).length;
         const srtChunks = files.filter((f) => /^chunk_\d+\.srt$/.test(f)).length;
         const videoFile = files.find((f) =>
           f.match(/\.(mp4|mov|webm|mkv)$/i)
@@ -152,8 +151,8 @@ app.get("/api/uploads", async (req: Request, res: Response) => {
           filename: status.filename || videoFile || "Unknown",
           status: status.step,
           progress: status.progress || 0,
-          wavChunks,
-          srtChunks,
+          chunksCompleted: srtChunks,
+          totalChunks: status.numChunks || 0,
           createdAt: stat.birthtime,
         });
       } catch (err) {
