@@ -160,23 +160,30 @@ async function getVideoDuration(filePath: string): Promise<number> {
       "-show_entries",
       "format=duration",
       "-of",
-      "default=noprint_wrappers=1:nokey=1:csv_escape=csv",
+      "default=noprint_wrappers=1:nokey=1",
       filePath,
     ]);
 
     let output = "";
+    let stderr = "";
 
     proc.stdout.on("data", (data) => {
       output += data.toString();
     });
 
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
     proc.on("close", (code) => {
-      if (code === 0) {
+      if (code === 0 && output.trim()) {
         const duration = parseFloat(output.trim());
-        resolve(duration);
-      } else {
-        reject(new Error("Failed to get video duration"));
+        if (!isNaN(duration)) {
+          resolve(duration);
+          return;
+        }
       }
+      reject(new Error(`Failed to get video duration: ${stderr || "No output from ffprobe"}`));
     });
 
     proc.on("error", (err) => reject(err));
