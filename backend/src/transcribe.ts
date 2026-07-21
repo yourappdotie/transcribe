@@ -100,6 +100,15 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       // Transcribe with whisper-cli
       await runTranscribeCommand(fileId, wavPath, modelPath, chunkNum, numChunks);
 
+      // Rename the .wav.srt to .srt
+      const wavSrtPath = `${wavPath}.srt`;
+      try {
+        await fs.rename(wavSrtPath, srtPath);
+      } catch (err) {
+        console.error(`Failed to rename ${wavSrtPath} to ${srtPath}:`, err);
+        throw new Error(`Whisper-cli did not create subtitle file for chunk ${chunkNum}`);
+      }
+
       // Read and offset subtitles
       const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
       allSubtitles.push(subtitles);
