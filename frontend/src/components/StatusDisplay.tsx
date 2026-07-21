@@ -211,7 +211,6 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
                 </div>
                 <p className="progress-percent">{status.progress || 0}%</p>
               </div>
-            </div>
               <div className="progress-bar-container">
                 <div className="progress-bar" style={{ width: `${status.progress || 0}%` }}></div>
               </div>
