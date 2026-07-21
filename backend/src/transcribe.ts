@@ -113,10 +113,9 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
       allSubtitles.push(subtitles);
 
-      // Cleanup chunk files
+      // Cleanup chunk video and audio files (keep SRT for live transcription)
       await fs.unlink(chunkPaths[i]);
       await fs.unlink(wavPath);
-      await fs.unlink(srtPath);
     }
 
     // Merge subtitles with overlap reconciliation

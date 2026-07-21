@@ -9,6 +9,16 @@ import { fileURLToPath } from "url";
 import { transcribeFile } from "./transcribe.js";
 import { getFileStatus, listResults } from "./storage.js";
 
+const CHUNK_DURATION = 60;
+const CHUNK_OVERLAP = 5;
+
+interface SubtitleEntry {
+  index: number;
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -107,6 +117,44 @@ app.get("/api/download/:fileId/:filename", async (req: Request, res: Response) =
   }
 });
 
+app.get("/api/transcription/:fileId/live", async (req: Request, res: Response) => {
+  try {
+    const fileDir = path.join(uploadsDir, req.params.fileId);
+    const files = await fs.readdir(fileDir);
+    const chunkFiles = files
+      .filter((f) => f.match(/^chunk_\d+\.srt$/))
+      .sort((a, b) => {
+        const numA = parseInt(a.match(/\d+/)![0], 10);
+        const numB = parseInt(b.match(/\d+/)![0], 10);
+        return numA - numB;
+      });
+
+    if (chunkFiles.length === 0) {
+      res.json({ srt: "", vtt: "" });
+      return;
+    }
+
+    // Merge completed chunks
+    const mergedSubtitles: SubtitleEntry[] = [];
+    for (let i = 0; i < chunkFiles.length; i++) {
+      const chunkFile = path.join(fileDir, chunkFiles[i]);
+      const content = await fs.readFile(chunkFile, "utf-8");
+      const entries = parseAndOffsetSRT(content, i * CHUNK_DURATION);
+      mergedSubtitles.push(...entries);
+    }
+
+    mergedSubtitles.sort((a, b) => a.startMs - b.startMs);
+
+    const srt = entriesToSRT(mergedSubtitles);
+    const vtt = convertSRTtoVTT(srt);
+
+    res.json({ srt, vtt });
+  } catch (err) {
+    console.error("Live transcription error:", err);
+    res.status(500).json({ error: "Failed to get live transcription" });
+  }
+});
+
 app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) => {
   try {
     const { vttContent } = req.body;
@@ -174,3 +222,81 @@ app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) =>
 app.listen(port, () => {
   console.log(`Transcribe backend running on http://localhost:${port}`);
 });
+
+// Helper functions for subtitle parsing
+function timeToMs(timeStr: string): number {
+  const parts = timeStr.replace(",", ".").split(":");
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  const seconds = parseFloat(parts[2]);
+  return (hours * 3600 + minutes * 60 + seconds) * 1000;
+}
+
+function msToTime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const millis = Math.floor(ms % 1000);
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
+}
+
+function parseAndOffsetSRT(content: string, offsetSeconds: number): SubtitleEntry[] {
+  const lines = content.split("\n");
+  const entries: SubtitleEntry[] = [];
+  let i = 0;
+  let index = 1;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+
+    if (line.includes("-->")) {
+      const [startStr, endStr] = line.split("-->").map((s) => s.trim());
+      const startMs = timeToMs(startStr) + offsetSeconds * 1000;
+      const endMs = timeToMs(endStr) + offsetSeconds * 1000;
+      i++;
+
+      const textLines: string[] = [];
+      while (i < lines.length && lines[i].trim() !== "") {
+        textLines.push(lines[i]);
+        i++;
+      }
+
+      entries.push({
+        index,
+        startMs,
+        endMs,
+        text: textLines.join("\n"),
+      });
+      index++;
+    }
+    i++;
+  }
+
+  return entries;
+}
+
+function entriesToSRT(entries: SubtitleEntry[]): string {
+  const result: string[] = [];
+
+  for (let i = 0; i < entries.length; i++) {
+    result.push(String(i + 1));
+    result.push(`${msToTime(entries[i].startMs)} --> ${msToTime(entries[i].endMs)}`);
+    result.push(entries[i].text);
+    result.push("");
+  }
+
+  return result.join("\n");
+}
+
+function convertSRTtoVTT(srt: string): string {
+  return (
+    "WEBVTT\n\n" +
+    srt
+      .split("\n")
+      .filter((line) => !line.match(/^\d+$/))
+      .map((line) => line.replace(/,/g, "."))
+      .join("\n")
+  );
+}

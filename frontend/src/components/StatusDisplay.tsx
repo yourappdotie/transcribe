@@ -161,6 +161,13 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
           </div>
         )}
 
+        {!isComplete && !isError && status.step === "transcribing" && (
+          <div className="live-editor-section">
+            <h4>Live Transcription (updates as chunks complete)</h4>
+            <SubtitleEditor fileId={fileId} isLive={true} />
+          </div>
+        )}
+
         {isError && (
           <div className="error-section">
             <p className="error-message">❌ {status.message}</p>
