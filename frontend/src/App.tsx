@@ -2,10 +2,12 @@ import { useState } from "react";
 import { uploadFile, getStatus, type FileStatus } from "./api";
 import Uploader from "./components/Uploader";
 import StatusDisplay from "./components/StatusDisplay";
+import OriginalVideoPlayback from "./components/OriginalVideoPlayback";
 
 interface TranscriptionJob {
   fileId: string;
   filename: string;
+  originalFilename: string;
   status: FileStatus;
 }
 
@@ -30,6 +32,7 @@ export default function App() {
       const newJob: TranscriptionJob = {
         fileId,
         filename,
+        originalFilename: filename,
         status: initialStatus,
       };
 
@@ -64,7 +67,16 @@ export default function App() {
       </header>
 
       <main className="main">
-        {!isProcessing && <Uploader onUpload={handleUpload} />}
+        {!isProcessing ? (
+          <Uploader onUpload={handleUpload} />
+        ) : (
+          jobs.length > 0 && (
+            <OriginalVideoPlayback
+              fileId={jobs[0].fileId}
+              filename={jobs[0].originalFilename}
+            />
+          )
+        )}
 
         <div className="jobs">
           {jobs.length === 0 ? (

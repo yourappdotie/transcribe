@@ -97,6 +97,46 @@ body {
   text-decoration: underline;
 }
 
+/* Original Video Playback */
+.original-video-section {
+  margin-bottom: 3rem;
+  padding: 1.5rem;
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.original-video-section h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1.2rem;
+}
+
+.video-hint {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  font-style: italic;
+}
+
+.video-container {
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #000;
+  margin-bottom: 1rem;
+}
+
+.original-video {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.original-video-section .filename {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
 /* Uploader */
 .uploader-section {
   margin-bottom: 3rem;
