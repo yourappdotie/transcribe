@@ -309,19 +309,16 @@ async function buildIncrementalFinalVtt(
   const mergedSrt = mergeSubtitlesWithOverlap(allSubtitles, allSubtitles.length);
   const mergedVtt = convertSRTtoVTT(mergedSrt);
 
-  // Always update unedited versions (raw AI output record)
+  // Always update both unedited and final versions
   const uneditedSrtPath = path.join(fileDir, `${basename}_unedited.srt`);
   const uneditedVttPath = path.join(fileDir, `${basename}_unedited.vtt`);
+  const finalSrtPath = path.join(fileDir, `${basename}.srt`);
+  const finalVttPath = path.join(fileDir, `${basename}.vtt`);
+
   await fs.writeFile(uneditedSrtPath, mergedSrt);
   await fs.writeFile(uneditedVttPath, mergedVtt);
-
-  // Only update final versions if they don't exist (preserve edits on resume)
-  if (!finalFilesExist) {
-    const finalSrtPath = path.join(fileDir, `${basename}.srt`);
-    const finalVttPath = path.join(fileDir, `${basename}.vtt`);
-    await fs.writeFile(finalSrtPath, mergedSrt);
-    await fs.writeFile(finalVttPath, mergedVtt);
-  }
+  await fs.writeFile(finalSrtPath, mergedSrt);
+  await fs.writeFile(finalVttPath, mergedVtt);
 }
 
 async function readAndOffsetSRT(
