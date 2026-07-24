@@ -33,6 +33,10 @@ app.use(express.json());
 
 const uploadsDir = path.join(__dirname, "../uploads");
 
+// Track active transcription processes
+const activeTranscriptions = new Set<string>();
+const transcriptionControllers = new Map<string, AbortController>();
+
 function broadcastStatusUpdate(fileId: string, status: any, liveVtt?: string) {
   const clients = sseClients.get(fileId);
   if (!clients) return;
@@ -84,8 +88,18 @@ app.post(
         status: "uploaded",
       });
 
-      transcribeFile(fileId, filePath).catch((err) => {
-        console.error(`Transcription failed for ${fileId}:`, err);
+      // Mark as active and create abort controller
+      activeTranscriptions.add(fileId);
+      const controller = new AbortController();
+      transcriptionControllers.set(fileId, controller);
+
+      transcribeFile(fileId, filePath, controller.signal).catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error(`Transcription failed for ${fileId}:`, err);
+        }
+      }).finally(() => {
+        activeTranscriptions.delete(fileId);
+        transcriptionControllers.delete(fileId);
       });
     } catch (err) {
       console.error("Upload error:", err);
@@ -292,6 +306,13 @@ app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) =>
 app.post("/api/transcription/:fileId/resume", async (req: Request, res: Response) => {
   try {
     const fileId = req.params.fileId;
+
+    // Check if transcription is already running
+    if (activeTranscriptions.has(fileId)) {
+      res.json({ success: true, message: "Transcription already in progress" });
+      return;
+    }
+
     const fileDir = path.join(uploadsDir, fileId);
 
     // Find the original video file
@@ -307,9 +328,19 @@ app.post("/api/transcription/:fileId/resume", async (req: Request, res: Response
 
     res.json({ success: true, message: "Transcription resuming" });
 
+    // Mark as active and create abort controller
+    activeTranscriptions.add(fileId);
+    const controller = new AbortController();
+    transcriptionControllers.set(fileId, controller);
+
     // Start transcription in background
-    transcribeFile(fileId, filePath).catch((err) => {
-      console.error(`Transcription failed for ${fileId}:`, err);
+    transcribeFile(fileId, filePath, controller.signal).catch((err) => {
+      if (err.name !== "AbortError") {
+        console.error(`Transcription failed for ${fileId}:`, err);
+      }
+    }).finally(() => {
+      activeTranscriptions.delete(fileId);
+      transcriptionControllers.delete(fileId);
     });
   } catch (err) {
     console.error("Resume transcription error:", err);
@@ -361,6 +392,12 @@ app.get("/api/transcription/:fileId/stream", async (req: Request, res: Response)
       clients.delete(res);
       if (clients.size === 0) {
         sseClients.delete(fileId);
+        // If this was the last client and transcription is running, abort it
+        const controller = transcriptionControllers.get(fileId);
+        if (controller && activeTranscriptions.has(fileId)) {
+          console.log(`Last client disconnected for ${fileId}, aborting transcription`);
+          controller.abort();
+        }
       }
     }
     res.end();

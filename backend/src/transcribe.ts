@@ -13,7 +13,7 @@ interface SubtitleEntry {
   text: string;
 }
 
-export async function transcribeFile(fileId: string, inputPath: string): Promise<void> {
+export async function transcribeFile(fileId: string, inputPath: string, signal?: AbortSignal): Promise<void> {
   const fileDir = path.dirname(inputPath);
   const filename = path.basename(inputPath);
   const ext = path.extname(filename).toLowerCase();
@@ -21,6 +21,10 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
   const startTime = Date.now();
 
   try {
+    // Check if abort signal is already set
+    if (signal?.aborted) {
+      throw new DOMException("Transcription aborted", "AbortError");
+    }
     const modelPath = await getModelPath();
     if (!modelPath) {
       throw new Error("Whisper model not found at models/ggml-small.en.bin");
@@ -97,6 +101,11 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
 
     // Transcribe each chunk
     for (let i = 0; i < numChunks; i++) {
+      // Check abort signal before each chunk
+      if (signal?.aborted) {
+        throw new DOMException("Transcription aborted", "AbortError");
+      }
+
       const chunkNum = i + 1;
       const wavPath = path.join(fileDir, `chunk_${chunkNum}.wav`);
       const srtPath = path.join(fileDir, `chunk_${chunkNum}.srt`);
