@@ -184,45 +184,33 @@ app.get("/api/transcription/:fileId/live", async (req: Request, res: Response) =
     const fileDir = path.join(uploadsDir, req.params.fileId);
     const files = await fs.readdir(fileDir);
 
-    // Find the final VTT/SRT being built incrementally
+    // Find the video file to derive basename
+    const videoFile = files.find((f) => f.match(/\.(mp4|mov|webm|mkv)$/i));
+    if (!videoFile) {
+      res.json({ srt: "", vtt: "" });
+      return;
+    }
+
+    const ext = path.extname(videoFile).toLowerCase();
+    const basename = path.basename(videoFile, ext);
+
     let vttContent = "";
     let srtContent = "";
 
-    for (const file of files) {
-      // Look for unedited files if available (raw AI output)
-      if (file.endsWith("_unedited.vtt")) {
-        vttContent = await fs.readFile(path.join(fileDir, file), "utf-8");
-      }
-      if (file.endsWith("_unedited.srt")) {
-        srtContent = await fs.readFile(path.join(fileDir, file), "utf-8");
-      }
+    // Read the edited final files (user edits take priority)
+    const finalVttPath = path.join(fileDir, `${basename}.vtt`);
+    const finalSrtPath = path.join(fileDir, `${basename}.srt`);
+
+    try {
+      vttContent = await fs.readFile(finalVttPath, "utf-8");
+    } catch {
+      // VTT not available yet
     }
 
-    // If no unedited files, try to find the main VTT/SRT files
-    if (!vttContent) {
-      try {
-        for (const file of files) {
-          if (file.endsWith(".vtt") && !file.endsWith("_unedited.vtt")) {
-            vttContent = await fs.readFile(path.join(fileDir, file), "utf-8");
-            break;
-          }
-        }
-      } catch {
-        // No VTT file yet
-      }
-    }
-
-    if (!srtContent) {
-      try {
-        for (const file of files) {
-          if (file.endsWith(".srt") && !file.endsWith("_unedited.srt")) {
-            srtContent = await fs.readFile(path.join(fileDir, file), "utf-8");
-            break;
-          }
-        }
-      } catch {
-        // No SRT file yet
-      }
+    try {
+      srtContent = await fs.readFile(finalSrtPath, "utf-8");
+    } catch {
+      // SRT not available yet
     }
 
     res.json({ srt: srtContent, vtt: vttContent });
