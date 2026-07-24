@@ -28,28 +28,111 @@ export interface FileStatus {
   numChunks?: number;
 }
 
-export async function updateStatus(fileId: string, status: Partial<FileStatus>): Promise<void> {
-  const fileDir = path.join(uploadsDir, fileId);
-  const statusPath = path.join(fileDir, ".status.json");
-
-  await fs.mkdir(fileDir, { recursive: true });
-
-  const current = await getFileStatus(fileId).catch(() => ({}));
-  const updated = { fileId, ...current, ...status };
-
-  await fs.writeFile(statusPath, JSON.stringify(updated, null, 2));
-
-  // Emit status update event for SSE
-  statusEmitter.emit("update", fileId, updated);
-}
-
 export async function getFileStatus(fileId: string): Promise<FileStatus> {
   const fileDir = path.join(uploadsDir, fileId);
-  const statusPath = path.join(fileDir, ".status.json");
 
   try {
-    const content = await fs.readFile(statusPath, "utf-8");
-    return JSON.parse(content);
+    const files = await fs.readdir(fileDir);
+
+    // Find video file and determine filename
+    const videoFile = files.find((f) => f.match(/\.(mp4|mov|webm|mkv)$/i));
+    if (!videoFile) {
+      return {
+        fileId,
+        step: "uploading",
+        message: "Waiting for upload...",
+        progress: 0,
+      };
+    }
+
+    const filename = videoFile;
+    const ext = path.extname(filename).toLowerCase();
+    const basename = path.basename(filename, ext);
+
+    // Check for final files
+    const finalVttExists = files.some((f) => f === `${basename}.vtt`);
+    const finalSrtExists = files.some((f) => f === `${basename}.srt`);
+    const mp4Exists = files.some((f) => f === `${basename}.mp4`);
+
+    // Check for unedited backup files
+    const uneditedVttExists = files.some((f) => f === `${basename}_unedited.vtt`);
+
+    // Check for chunk files to determine progress
+    const chunkSrts = files.filter((f) => f.match(/^chunk_\d+\.srt$/)).length;
+
+    // If final files exist, transcription is complete
+    if (finalVttExists && finalSrtExists) {
+      return {
+        fileId,
+        filename,
+        step: "completed",
+        message: "Transcription complete",
+        progress: 100,
+        output: {
+          srt: `${basename}.srt`,
+          vtt: `${basename}.vtt`,
+          mp4: mp4Exists ? `${basename}.mp4` : null,
+        },
+      };
+    }
+
+    // If unedited backup exists, we're in transcription
+    if (uneditedVttExists && chunkSrts > 0) {
+      const videoPath = path.join(fileDir, filename);
+      let totalChunks = 0;
+      try {
+        const { getVideoDuration } = await import("./transcribe.js");
+        const duration = await getVideoDuration(videoPath);
+        totalChunks = Math.ceil(duration / 60); // 60-second chunks
+      } catch {
+        // If we can't get duration, estimate from chunk count
+        totalChunks = chunkSrts + 2;
+      }
+
+      const progress = totalChunks > 0 ? Math.round((chunkSrts / totalChunks) * 100) : 0;
+
+      return {
+        fileId,
+        filename,
+        step: "transcribing",
+        message: `Transcribing chunk ${chunkSrts}/${totalChunks}...`,
+        progress,
+        numChunks: totalChunks,
+      };
+    }
+
+    // Chunks exist but no final files → resumable transcription
+    if (chunkSrts > 0) {
+      const videoPath = path.join(fileDir, filename);
+      let totalChunks = 0;
+      try {
+        const { getVideoDuration } = await import("./transcribe.js");
+        const duration = await getVideoDuration(videoPath);
+        totalChunks = Math.ceil(duration / 60);
+      } catch {
+        totalChunks = chunkSrts + 2;
+      }
+
+      const progress = totalChunks > 0 ? Math.round((chunkSrts / totalChunks) * 100) : 0;
+
+      return {
+        fileId,
+        filename,
+        step: "transcribing",
+        message: `Transcribing chunk ${chunkSrts}/${totalChunks}... (resuming)`,
+        progress,
+        numChunks: totalChunks,
+      };
+    }
+
+    // Only video file exists
+    return {
+      fileId,
+      filename,
+      step: "extracting",
+      message: "Preparing audio extraction...",
+      progress: 0,
+    };
   } catch {
     return {
       fileId,

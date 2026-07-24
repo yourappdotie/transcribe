@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { uploadFile, getStatus, type FileStatus } from "./api";
 import Uploader from "./components/Uploader";
 import StatusDisplay from "./components/StatusDisplay";
@@ -69,7 +69,7 @@ export default function App() {
   const handleResume = async (fileId: string, filename: string) => {
     try {
       // Call backend to resume transcription
-      const resumeResponse = await fetch(`/api/transcription/${fileId}/resume`, {
+      const resumeResponse = await fetch(`http://localhost:5000/api/transcription/${fileId}/resume`, {
         method: "POST",
       });
 

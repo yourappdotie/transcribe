@@ -22,7 +22,7 @@ export default function PreviousUploads({ onResume }: PreviousUploadsProps) {
   useEffect(() => {
     const loadUploads = async () => {
       try {
-        const response = await fetch("/api/uploads");
+        const response = await fetch("http://localhost:5000/api/uploads");
         if (!response.ok) throw new Error("Failed to load uploads");
         const data = await response.json();
         setUploads(data);
@@ -45,7 +45,7 @@ export default function PreviousUploads({ onResume }: PreviousUploadsProps) {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/api/uploads/${fileId}`, {
+      const response = await fetch(`http://localhost:5000/api/uploads/${fileId}`, {
         method: "DELETE",
       });
 

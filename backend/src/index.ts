@@ -7,7 +7,7 @@ import fs from "fs/promises";
 import { mkdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import { transcribeFile, getVideoDuration } from "./transcribe.js";
-import { getFileStatus, listResults, statusEmitter, updateStatus } from "./storage.js";
+import { getFileStatus, listResults, statusEmitter } from "./storage.js";
 
 const CHUNK_DURATION = 60;
 const CHUNK_OVERLAP = 5;
@@ -145,41 +145,20 @@ app.get("/api/uploads", async (req: Request, res: Response) => {
 
         if (!stat.isDirectory()) continue;
 
-        const statusPath = path.join(folderPath, ".status.json");
-        let status;
-        try {
-          const content = await fs.readFile(statusPath, "utf-8");
-          status = JSON.parse(content);
-        } catch {
-          continue;
-        }
+        const status = await getFileStatus(folder);
+        if (!status.filename) continue;
 
-        // Count chunk files to determine progress
+        // Count chunk files
         const files = await fs.readdir(folderPath);
         const srtChunks = files.filter((f) => /^chunk_\d+\.srt$/.test(f)).length;
-        const videoFile = files.find((f) =>
-          f.match(/\.(mp4|mov|webm|mkv)$/i)
-        );
-
-        // Get total chunks from status or calculate from video duration
-        let totalChunks = status.numChunks || 0;
-        if (totalChunks === 0 && videoFile) {
-          try {
-            const videoPath = path.join(folderPath, videoFile);
-            const duration = await getVideoDuration(videoPath);
-            totalChunks = Math.ceil(duration / CHUNK_DURATION);
-          } catch (err) {
-            // If we can't get duration, leave totalChunks as 0
-          }
-        }
 
         uploads.push({
           fileId: folder,
-          filename: status.filename || videoFile || "Unknown",
+          filename: status.filename,
           status: status.step,
           progress: status.progress || 0,
           chunksCompleted: srtChunks,
-          totalChunks,
+          totalChunks: status.numChunks || 0,
           createdAt: stat.birthtime,
         });
       } catch (err) {
@@ -204,34 +183,49 @@ app.get("/api/transcription/:fileId/live", async (req: Request, res: Response) =
   try {
     const fileDir = path.join(uploadsDir, req.params.fileId);
     const files = await fs.readdir(fileDir);
-    const chunkFiles = files
-      .filter((f) => f.match(/^chunk_\d+\.srt$/))
-      .sort((a, b) => {
-        const numA = parseInt(a.match(/\d+/)![0], 10);
-        const numB = parseInt(b.match(/\d+/)![0], 10);
-        return numA - numB;
-      });
 
-    if (chunkFiles.length === 0) {
-      res.json({ srt: "", vtt: "" });
-      return;
+    // Find the final VTT/SRT being built incrementally
+    let vttContent = "";
+    let srtContent = "";
+
+    for (const file of files) {
+      // Look for unedited files if available (raw AI output)
+      if (file.endsWith("_unedited.vtt")) {
+        vttContent = await fs.readFile(path.join(fileDir, file), "utf-8");
+      }
+      if (file.endsWith("_unedited.srt")) {
+        srtContent = await fs.readFile(path.join(fileDir, file), "utf-8");
+      }
     }
 
-    // Merge completed chunks
-    const mergedSubtitles: SubtitleEntry[] = [];
-    for (let i = 0; i < chunkFiles.length; i++) {
-      const chunkFile = path.join(fileDir, chunkFiles[i]);
-      const content = await fs.readFile(chunkFile, "utf-8");
-      const entries = parseAndOffsetSRT(content, i * CHUNK_DURATION);
-      mergedSubtitles.push(...entries);
+    // If no unedited files, try to find the main VTT/SRT files
+    if (!vttContent) {
+      try {
+        for (const file of files) {
+          if (file.endsWith(".vtt") && !file.endsWith("_unedited.vtt")) {
+            vttContent = await fs.readFile(path.join(fileDir, file), "utf-8");
+            break;
+          }
+        }
+      } catch {
+        // No VTT file yet
+      }
     }
 
-    mergedSubtitles.sort((a, b) => a.startMs - b.startMs);
+    if (!srtContent) {
+      try {
+        for (const file of files) {
+          if (file.endsWith(".srt") && !file.endsWith("_unedited.srt")) {
+            srtContent = await fs.readFile(path.join(fileDir, file), "utf-8");
+            break;
+          }
+        }
+      } catch {
+        // No SRT file yet
+      }
+    }
 
-    const srt = entriesToSRT(mergedSubtitles);
-    const vtt = convertSRTtoVTT(srt);
-
-    res.json({ srt, vtt });
+    res.json({ srt: srtContent, vtt: vttContent });
   } catch (err) {
     console.error("Live transcription error:", err);
     res.status(500).json({ error: "Failed to get live transcription" });
@@ -247,15 +241,20 @@ app.post("/api/update-subtitles/:fileId", async (req: Request, res: Response) =>
     }
 
     const fileDir = path.join(uploadsDir, req.params.fileId);
-    const status = await getFileStatus(req.params.fileId);
+    const files = await fs.readdir(fileDir);
 
-    if (!status.output?.vtt) {
-      res.status(400).json({ error: "No subtitle file found" });
+    // Find the video file to derive basename
+    const videoFile = files.find((f) => f.match(/\.(mp4|mov|webm|mkv)$/i));
+    if (!videoFile) {
+      res.status(400).json({ error: "Video file not found" });
       return;
     }
 
-    const vttPath = path.join(fileDir, status.output.vtt);
-    const srtPath = path.join(fileDir, status.output.srt || "");
+    const ext = path.extname(videoFile).toLowerCase();
+    const basename = path.basename(videoFile, ext);
+
+    const vttPath = path.join(fileDir, `${basename}.vtt`);
+    const srtPath = path.join(fileDir, `${basename}.srt`);
 
     // Write VTT
     await fs.writeFile(vttPath, vttContent);
@@ -317,12 +316,6 @@ app.post("/api/transcription/:fileId/resume", async (req: Request, res: Response
     }
 
     const filePath = path.join(fileDir, videoFile);
-
-    // Reset progress in status file
-    await updateStatus(fileId, {
-      progress: 0,
-      message: "Resuming transcription...",
-    });
 
     res.json({ success: true, message: "Transcription resuming" });
 
@@ -497,3 +490,4 @@ function convertSRTtoVTT(srt: string): string {
       .join("\n")
   );
 }
+

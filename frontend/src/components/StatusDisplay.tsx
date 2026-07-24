@@ -7,10 +7,10 @@ interface StatusDisplayProps {
   job: {
     fileId: string;
     filename: string;
+    originalFilename?: string;
     status: FileStatus;
     liveVtt?: string;
   };
-  originalFilename?: string;
 }
 
 function VideoPlayer({
@@ -222,7 +222,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
               <OriginalVideoPlayback
                 ref={videoRef}
                 fileId={fileId}
-                filename={job.originalFilename}
+                filename={job.originalFilename || filename}
                 liveVtt={job.liveVtt}
               />
             </div>

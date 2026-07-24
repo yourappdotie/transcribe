@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs/promises";
-import { updateStatus, getModelPath } from "./storage.js";
+import { getModelPath, statusEmitter } from "./storage.js";
 
 const CHUNK_DURATION = 60; // 1 minute
 const CHUNK_OVERLAP = 5; // 5 second overlap
@@ -21,8 +21,6 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
   const startTime = Date.now();
 
   try {
-    await updateStatus(fileId, { startTime });
-
     const modelPath = await getModelPath();
     if (!modelPath) {
       throw new Error("Whisper model not found at models/ggml-small.en.bin");
@@ -37,9 +35,19 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     const existingWavChunks = files.filter((f) => f.match(/^chunk_\d+\.wav$/)).length;
     const isResume = existingWavChunks > 0;
 
+    // Check if final VTT exists (means edits have been made - preserve them)
+    const finalSrtPath = path.join(fileDir, `${basename}.srt`);
+    const finalVttPath = path.join(fileDir, `${basename}.vtt`);
+    const finalFilesExist = await fs
+      .access(finalVttPath)
+      .then(() => true)
+      .catch(() => false);
+
     if (!isResume) {
       // Fresh start: prepare for chunking
-      await updateStatus(fileId, {
+      statusEmitter.emit("update", fileId, {
+        fileId,
+        filename,
         step: "converting",
         message: `Preparing audio extraction...`,
         progress: 0,
@@ -69,7 +77,9 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       }
     } else {
       // Resume: chunks already exist, go straight to transcribing
-      await updateStatus(fileId, {
+      statusEmitter.emit("update", fileId, {
+        fileId,
+        filename,
         step: "transcribing",
         message: `Resuming transcription (skipping audio extraction)...`,
         progress: 0,
@@ -82,9 +92,10 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       ? path.join(fileDir, `${basename}.mp4`)
       : inputPath;
 
-    // Transcribe each chunk
+    // Track all subtitles as we go
     const allSubtitles: SubtitleEntry[][] = [];
 
+    // Transcribe each chunk
     for (let i = 0; i < numChunks; i++) {
       const chunkNum = i + 1;
       const wavPath = path.join(fileDir, `chunk_${chunkNum}.wav`);
@@ -96,8 +107,10 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
         await fs.access(srtPath);
         console.log(`Chunk ${chunkNum} already transcribed, skipping...`);
 
-        // Update status to show progress even for skipped chunks
-        await updateStatus(fileId, {
+        // Broadcast progress for skipped chunks
+        statusEmitter.emit("update", fileId, {
+          fileId,
+          filename,
           step: "transcribing",
           message: `Transcribing chunk ${chunkNum}/${numChunks}... (resuming)`,
           progress,
@@ -106,31 +119,41 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
         // Read existing subtitles for merging
         const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
         allSubtitles.push(subtitles);
+
+        // Build incremental final merge with this chunk
+        await buildIncrementalFinalVtt(
+          fileDir,
+          basename,
+          allSubtitles,
+          finalFilesExist
+        );
         continue;
       } catch {
         // File doesn't exist, proceed with transcription
       }
 
-      await updateStatus(fileId, {
+      statusEmitter.emit("update", fileId, {
+        fileId,
+        filename,
         step: "transcribing",
         message: `Transcribing chunk ${chunkNum}/${numChunks}...`,
         progress,
       });
 
       // Extract audio chunk directly from source
-      const startTime = i * CHUNK_DURATION;
-      const duration = CHUNK_DURATION + CHUNK_OVERLAP;
+      const chunkStartTime = i * CHUNK_DURATION;
+      const chunkDuration = CHUNK_DURATION + CHUNK_OVERLAP;
 
       await runCommand("ffmpeg", [
         "-y",
         "-loglevel",
         "error",
         "-ss",
-        startTime.toString(),
+        chunkStartTime.toString(),
         "-i",
         audioSource,
         "-t",
-        duration.toString(),
+        chunkDuration.toString(),
         "-ar",
         "16000",
         "-ac",
@@ -156,23 +179,21 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
       const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
       allSubtitles.push(subtitles);
 
-      // KEEP ALL FILES - no cleanup
+      // Build incremental final merge with newly transcribed chunk
+      await buildIncrementalFinalVtt(
+        fileDir,
+        basename,
+        allSubtitles,
+        finalFilesExist
+      );
     }
-
-    // Merge subtitles with overlap reconciliation
-    const mergedSrt = mergeSubtitlesWithOverlap(allSubtitles, numChunks);
-    const mergedVtt = convertSRTtoVTT(mergedSrt);
-
-    const srtPath = path.join(fileDir, `${basename}.srt`);
-    const vttPath = path.join(fileDir, `${basename}.vtt`);
-
-    await fs.writeFile(srtPath, mergedSrt);
-    await fs.writeFile(vttPath, mergedVtt);
 
     const endTime = Date.now();
     const duration_ms = endTime - startTime;
 
-    await updateStatus(fileId, {
+    statusEmitter.emit("update", fileId, {
+      fileId,
+      filename,
       step: "completed",
       message: "Transcription complete",
       progress: 100,
@@ -186,7 +207,9 @@ export async function transcribeFile(fileId: string, inputPath: string): Promise
     });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    await updateStatus(fileId, {
+    statusEmitter.emit("update", fileId, {
+      fileId,
+      filename,
       step: "error",
       message: error,
       progress: 0,
@@ -245,14 +268,6 @@ async function splitVideoIntoChunks(
     const startTime = i * CHUNK_DURATION;
     const duration = CHUNK_DURATION + CHUNK_OVERLAP;
     const chunkPath = path.join(fileDir, `chunk_${i + 1}.mp4`);
-    const chunkNum = i + 1;
-    const progress = Math.round((i / numChunks) * 100);
-
-    await updateStatus(fileId, {
-      step: "converting",
-      message: `Splitting chunk ${chunkNum}/${numChunks}...`,
-      progress,
-    });
 
     await runCommand("ffmpeg", [
       "-y",
@@ -273,6 +288,31 @@ async function splitVideoIntoChunks(
   }
 
   return chunkPaths;
+}
+
+async function buildIncrementalFinalVtt(
+  fileDir: string,
+  basename: string,
+  allSubtitles: SubtitleEntry[][],
+  finalFilesExist: boolean
+): Promise<void> {
+  // Merge all completed chunks with overlap reconciliation and gap-filling
+  const mergedSrt = mergeSubtitlesWithOverlap(allSubtitles, allSubtitles.length);
+  const mergedVtt = convertSRTtoVTT(mergedSrt);
+
+  // Always update unedited versions (raw AI output record)
+  const uneditedSrtPath = path.join(fileDir, `${basename}_unedited.srt`);
+  const uneditedVttPath = path.join(fileDir, `${basename}_unedited.vtt`);
+  await fs.writeFile(uneditedSrtPath, mergedSrt);
+  await fs.writeFile(uneditedVttPath, mergedVtt);
+
+  // Only update final versions if they don't exist (preserve edits on resume)
+  if (!finalFilesExist) {
+    const finalSrtPath = path.join(fileDir, `${basename}.srt`);
+    const finalVttPath = path.join(fileDir, `${basename}.vtt`);
+    await fs.writeFile(finalSrtPath, mergedSrt);
+    await fs.writeFile(finalVttPath, mergedVtt);
+  }
 }
 
 async function readAndOffsetSRT(
@@ -346,8 +386,7 @@ function mergeSubtitlesWithOverlap(
 
   // Combine all entries and handle overlaps
   for (let chunkIdx = 0; chunkIdx < allSubtitles.length; chunkIdx++) {
-    const chunkStart = chunkIdx * CHUNK_DURATION * 1000;
-    const overlapBoundary = chunkStart + (CHUNK_DURATION - CHUNK_OVERLAP) * 1000;
+    const overlapBoundary = (chunkIdx + 1) * CHUNK_DURATION * 1000;
 
     for (const entry of allSubtitles[chunkIdx]) {
       // Check if this entry is in an overlap region
@@ -374,8 +413,22 @@ function mergeSubtitlesWithOverlap(
     }
   }
 
-  // Sort by start time and renumber
+  // Sort by start time
   allEntries.sort((a, b) => a.startMs - b.startMs);
+
+  // Fill gaps with blank audio entries to ensure contiguity
+  for (let i = 0; i < allEntries.length - 1; i++) {
+    const entry = allEntries[i];
+    const nextEntry = allEntries[i + 1];
+    const gap = nextEntry.startMs - entry.endMs;
+
+    if (gap > 0) {
+      // If current entry is blank audio, extend it to fill the gap
+      if (entry.text.trim().toUpperCase() === "[BLANK_AUDIO]") {
+        entry.endMs = nextEntry.startMs;
+      }
+    }
+  }
 
   for (let i = 0; i < allEntries.length; i++) {
     result.push(String(i + 1));
@@ -458,12 +511,11 @@ async function runTranscribeCommand(
 
         console.log(`[${fileId}] Chunk ${chunkNum}: ${chunkProgress}% (overall: ${overallProgress}%)`);
 
-        updateStatus(fileId, {
+        statusEmitter.emit("update", fileId, {
+          fileId,
           step: "transcribing",
           message: `Transcribing chunk ${chunkNum}/${totalChunks}... ${chunkProgress}%`,
           progress: overallProgress,
-        }).catch((err) => {
-          console.error(`Failed to update status:`, err);
         });
       }
     });

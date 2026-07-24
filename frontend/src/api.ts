@@ -1,3 +1,5 @@
+const API_BASE_URL = "http://localhost:5000";
+
 export interface FileStatus {
   fileId: string;
   filename?: string;
@@ -18,7 +20,7 @@ export async function uploadFile(file: File): Promise<{ fileId: string; filename
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch("/api/upload", {
+  const response = await fetch(`${API_BASE_URL}/api/upload`, {
     method: "POST",
     body: formData,
   });
@@ -31,7 +33,7 @@ export async function uploadFile(file: File): Promise<{ fileId: string; filename
 }
 
 export async function getStatus(fileId: string): Promise<FileStatus> {
-  const response = await fetch(`/api/status/${fileId}`);
+  const response = await fetch(`${API_BASE_URL}/api/status/${fileId}`);
 
   if (!response.ok) {
     throw new Error("Failed to get status");
@@ -41,7 +43,7 @@ export async function getStatus(fileId: string): Promise<FileStatus> {
 }
 
 export async function listFiles(fileId: string): Promise<string[]> {
-  const response = await fetch(`/api/files/${fileId}`);
+  const response = await fetch(`${API_BASE_URL}/api/files/${fileId}`);
 
   if (!response.ok) {
     throw new Error("Failed to list files");
@@ -51,5 +53,5 @@ export async function listFiles(fileId: string): Promise<string[]> {
 }
 
 export function getDownloadUrl(fileId: string, filename: string): string {
-  return `/api/download/${fileId}/${encodeURIComponent(filename)}`;
+  return `${API_BASE_URL}/api/download/${fileId}/${encodeURIComponent(filename)}`;
 }

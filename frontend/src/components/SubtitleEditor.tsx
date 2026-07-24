@@ -125,7 +125,7 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/update-subtitles/${fileId}`, {
+        const response = await fetch(`http://localhost:5000/api/update-subtitles/${fileId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vttContent: entriesToVTT(newEntries) }),
