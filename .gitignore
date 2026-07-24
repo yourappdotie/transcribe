@@ -1,6 +1,7 @@
 models/*.bin
 backend/uploads
 frontend/dist
+frontend/src/**/*.js
 
 node_modules
 dist
