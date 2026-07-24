@@ -60,8 +60,19 @@ export async function getFileStatus(fileId: string): Promise<FileStatus> {
     // Check for chunk files to determine progress
     const chunkSrts = files.filter((f) => f.match(/^chunk_\d+\.srt$/)).length;
 
-    // If final files exist, transcription is complete
-    if (finalVttExists && finalSrtExists) {
+    // Calculate total expected chunks from video duration
+    const videoPath = path.join(fileDir, filename);
+    let totalChunks = 0;
+    try {
+      const { getVideoDuration } = await import("./transcribe.js");
+      const duration = await getVideoDuration(videoPath);
+      totalChunks = Math.ceil(duration / 60); // 60-second chunks
+    } catch {
+      totalChunks = 0;
+    }
+
+    // If final files exist AND all chunks are transcribed, transcription is complete
+    if (finalVttExists && finalSrtExists && chunkSrts === totalChunks && totalChunks > 0) {
       return {
         fileId,
         filename,
