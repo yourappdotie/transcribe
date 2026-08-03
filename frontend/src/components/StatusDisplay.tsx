@@ -75,10 +75,30 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
   const isComplete = status.step === "completed";
   const isError = status.step === "error";
   const [showEditor, setShowEditor] = useState(false);
+  const [vttContent, setVttContent] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const [lastProgress, setLastProgress] = useState<number>(status.progress || 0);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const [timeSinceUpdate, setTimeSinceUpdate] = useState<string>("0s");
+
+  // Load VTT content when editor is opened
+  useEffect(() => {
+    const vttFile = status.output?.vtt;
+    if (showEditor && !vttContent && isComplete && vttFile) {
+      const loadVTT = async () => {
+        try {
+          const response = await fetch(getDownloadUrl(fileId, vttFile));
+          if (response.ok) {
+            const content = await response.text();
+            setVttContent(content);
+          }
+        } catch (err) {
+          console.error("Failed to load VTT content:", err);
+        }
+      };
+      loadVTT();
+    }
+  }, [showEditor, fileId, status.output, vttContent, isComplete]);
 
   // Track when progress updates
   useEffect(() => {
@@ -166,9 +186,10 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
                   >
                     {showEditor ? "✓ Close Editor" : "✏️ Edit Subtitles"}
                   </button>
-                  {showEditor && (
+                  {showEditor && status.output?.vtt && status.output && (
                     <SubtitleEditor
                       fileId={fileId}
+                      vttContent={vttContent}
                       vttUrl={getDownloadUrl(fileId, status.output.vtt)}
                     />
                   )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import CommonEdits from "./CommonEdits";
 
 interface SubtitleEntry {
   index: number;
@@ -9,20 +10,22 @@ interface SubtitleEntry {
 interface SubtitleEditorProps {
   fileId: string;
   vttUrl?: string;
+  vttContent?: string;
   onSaved?: () => void;
   isLive?: boolean;
   liveVtt?: string;
   onSeek?: (seconds: number) => void;
 }
 
-export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false, liveVtt, onSeek }: SubtitleEditorProps) {
+export default function SubtitleEditor({ fileId, vttUrl, vttContent, onSaved, isLive = false, liveVtt, onSeek }: SubtitleEditorProps) {
   const [entries, setEntries] = useState<SubtitleEntry[]>([]);
   const [history, setHistory] = useState<SubtitleEntry[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string>("");
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const [isLoading, setIsLoading] = useState(true);
+  const [showCommonEdits, setShowCommonEdits] = useState(false);
 
   // Load VTT file or live transcription
   useEffect(() => {
@@ -31,18 +34,20 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
         let content: string;
 
         if (isLive && liveVtt) {
-          // Use live VTT from props (polling is done by parent)
           content = liveVtt;
         } else if (isLive) {
-          // Live mode but no VTT yet
           setIsLoading(false);
           return;
-        } else {
-          // Load from static VTT URL
-          if (!vttUrl) throw new Error("No VTT URL provided");
+        } else if (vttContent) {
+          // Use VTT content passed as prop (preferred to avoid CORS)
+          content = vttContent;
+        } else if (vttUrl) {
+          // Fallback: load from URL
           const response = await fetch(vttUrl);
           if (!response.ok) throw new Error("Failed to load VTT");
           content = await response.text();
+        } else {
+          throw new Error("No VTT content or URL provided");
         }
 
         const parsed = parseVTT(content);
@@ -57,7 +62,7 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
     };
 
     loadVTT();
-  }, [liveVtt, vttUrl, isLive, fileId]);
+  }, [liveVtt, vttUrl, vttContent, isLive, fileId]);
 
   const parseVTT = (content: string): SubtitleEntry[] => {
     const lines = content.split("\n");
@@ -206,6 +211,14 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
           >
             ↷ Redo
           </button>
+          <div className="toolbar-separator"></div>
+          <button
+            onClick={() => setShowCommonEdits(true)}
+            className="toolbar-btn common-edits-btn"
+            title="Common editing options"
+          >
+            ⚡ Common Edits
+          </button>
         </div>
         <div className={`status-indicator ${status}`}>
           {status === "saving" && "Saving..."}
@@ -214,6 +227,8 @@ export default function SubtitleEditor({ fileId, vttUrl, onSaved, isLive = false
           {status === "idle" && ""}
         </div>
       </div>
+
+      <CommonEdits isOpen={showCommonEdits} onClose={() => setShowCommonEdits(false)} />
 
       {error && <div className="editor-error">{error}</div>}
 
