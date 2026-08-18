@@ -11,6 +11,7 @@ interface SubtitleEntry {
   startMs: number;
   endMs: number;
   text: string;
+  confidence?: number; // 0-1, average confidence of tokens
 }
 
 export async function transcribeFile(fileId: string, inputPath: string, signal?: AbortSignal): Promise<void> {
@@ -109,11 +110,12 @@ export async function transcribeFile(fileId: string, inputPath: string, signal?:
       const chunkNum = i + 1;
       const wavPath = path.join(fileDir, `chunk_${chunkNum}.wav`);
       const srtPath = path.join(fileDir, `chunk_${chunkNum}.srt`);
+      const wavJsonPath = `${wavPath}.json`;
       const progress = Math.round((i / numChunks) * 100);
 
       // Check if this chunk is already transcribed
       try {
-        await fs.access(srtPath);
+        await fs.access(wavJsonPath);
 
         // Broadcast progress for skipped chunks
         statusEmitter.emit("update", fileId, {
@@ -124,8 +126,8 @@ export async function transcribeFile(fileId: string, inputPath: string, signal?:
           progress,
         });
 
-        // Read existing subtitles for merging
-        const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
+        // Read existing JSON subtitles for merging
+        const subtitles = await readAndOffsetJSON(wavJsonPath, i * CHUNK_DURATION);
         allSubtitles.push(subtitles);
 
         // Build incremental final merge with this chunk
@@ -171,21 +173,21 @@ export async function transcribeFile(fileId: string, inputPath: string, signal?:
         wavPath,
       ]);
 
-      // Transcribe with whisper-cli
+      // Transcribe with whisper-cli (outputs JSON)
       await runTranscribeCommand(fileId, wavPath, modelPath, chunkNum, numChunks);
 
-      // Rename the .wav.srt to .srt
-      const wavSrtPath = `${wavPath}.srt`;
+      // Read JSON output and convert to SRT format
       try {
-        await fs.rename(wavSrtPath, srtPath);
+        const subtitles = await readAndOffsetJSON(wavJsonPath, i * CHUNK_DURATION);
+        allSubtitles.push(subtitles);
+
+        // Also save SRT format for backward compatibility
+        const srtContent = subtitlesToSRT(subtitles);
+        await fs.writeFile(srtPath, srtContent);
       } catch (err) {
-        console.error(`Failed to rename ${wavSrtPath} to ${srtPath}:`, err);
+        console.error(`Failed to parse JSON for chunk ${chunkNum}:`, err);
         throw new Error(`Whisper-cli did not create subtitle file for chunk ${chunkNum}`);
       }
-
-      // Read and offset subtitles
-      const subtitles = await readAndOffsetSRT(srtPath, i * CHUNK_DURATION);
-      allSubtitles.push(subtitles);
 
       // Build incremental final merge with newly transcribed chunk
       await buildIncrementalFinalVtt(
@@ -325,45 +327,50 @@ async function buildIncrementalFinalVtt(
   }
 }
 
-async function readAndOffsetSRT(
-  srtPath: string,
+async function readAndOffsetJSON(
+  jsonPath: string,
   offsetSeconds: number
 ): Promise<SubtitleEntry[]> {
   try {
-    const content = await fs.readFile(srtPath, "utf-8");
-    const lines = content.split("\n");
+    const content = await fs.readFile(jsonPath, "utf-8");
+    const data = JSON.parse(content);
     const entries: SubtitleEntry[] = [];
-    let i = 0;
     let index = 1;
 
-    while (i < lines.length) {
-      const line = lines[i].trim();
+    if (!data.transcription || !Array.isArray(data.transcription)) {
+      return [];
+    }
 
-      if (line.includes("-->")) {
-        const [startStr, endStr] = line.split("-->").map((s) => s.trim());
-        const startMs = timeToMs(startStr) + offsetSeconds * 1000;
-        const endMs = timeToMs(endStr) + offsetSeconds * 1000;
-        i++;
+    for (const segment of data.transcription) {
+      const startMs = segment.offsets.from + offsetSeconds * 1000;
+      const endMs = segment.offsets.to + offsetSeconds * 1000;
+      const text = segment.text.trim();
 
-        const textLines: string[] = [];
-        while (i < lines.length && lines[i].trim() !== "") {
-          textLines.push(lines[i]);
-          i++;
+      // Calculate confidence as average of token probabilities
+      let confidence = 0.5; // default if no tokens
+      if (segment.tokens && Array.isArray(segment.tokens) && segment.tokens.length > 0) {
+        const tokenConfidences = segment.tokens
+          .map((token: any) => token.p || 0)
+          .filter((p: number) => p > 0); // Filter out invalid probabilities
+
+        if (tokenConfidences.length > 0) {
+          confidence = tokenConfidences.reduce((a: number, b: number) => a + b, 0) / tokenConfidences.length;
         }
-
-        entries.push({
-          index,
-          startMs,
-          endMs,
-          text: textLines.join("\n"),
-        });
-        index++;
       }
-      i++;
+
+      entries.push({
+        index,
+        startMs,
+        endMs,
+        text,
+        confidence,
+      });
+      index++;
     }
 
     return entries;
-  } catch {
+  } catch (err) {
+    console.error(`Error reading JSON: ${err}`);
     return [];
   }
 }
@@ -386,64 +393,92 @@ function msToTime(ms: number): string {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
 }
 
+function subtitlesToSRT(entries: SubtitleEntry[]): string {
+  const lines: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    lines.push(String(i + 1));
+    lines.push(`${msToTime(entry.startMs)} --> ${msToTime(entry.endMs)}`);
+    lines.push(entry.text);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 function mergeSubtitlesWithOverlap(
   allSubtitles: SubtitleEntry[][],
   numChunks: number
 ): string {
   const result: string[] = [];
   const allEntries: SubtitleEntry[] = [];
-  const overlapMs = CHUNK_OVERLAP * 1000;
 
-  // Combine all entries and handle overlaps
+  // Combine all entries from all chunks - keep everything initially
   for (let chunkIdx = 0; chunkIdx < allSubtitles.length; chunkIdx++) {
-    const overlapBoundary = (chunkIdx + 1) * CHUNK_DURATION * 1000;
-
     for (const entry of allSubtitles[chunkIdx]) {
-      // Check if this entry is in an overlap region
-      if (chunkIdx > 0 && entry.startMs >= overlapBoundary - overlapMs) {
-        // Entry is in overlap region
-        const distToStart = entry.startMs - (overlapBoundary - overlapMs);
-        const distToEnd = overlapBoundary - entry.startMs;
-
-        // Favor earlier chunk if closer to start (0-2.5s), favor later chunk if closer to end (2.5-5s)
-        if (distToStart < distToEnd) {
-          // This entry already came from the earlier chunk, keep it
-          allEntries.push(entry);
-        } else {
-          // This entry should come from the later chunk, skip it now and let the later chunk provide it
-          continue;
-        }
-      } else if (chunkIdx < allSubtitles.length - 1 && entry.startMs >= overlapBoundary) {
-        // This entry is in the overlap but should wait for the next chunk
-        continue;
-      } else {
-        // Entry is not in overlap, add it
-        allEntries.push(entry);
-      }
+      allEntries.push(entry);
     }
   }
 
   // Sort by start time
   allEntries.sort((a, b) => a.startMs - b.startMs);
 
-  // Fill gaps with blank audio entries to ensure contiguity
-  for (let i = 0; i < allEntries.length - 1; i++) {
-    const entry = allEntries[i];
-    const nextEntry = allEntries[i + 1];
-    const gap = nextEntry.startMs - entry.endMs;
+  // Deduplicate: for entries with same timing, keep the highest confidence version
+  const seen = new Map<string, SubtitleEntry>();
+  const dedupedEntries: SubtitleEntry[] = [];
 
-    if (gap > 0) {
-      // If current entry is blank audio, extend it to fill the gap
-      if (entry.text.trim().toUpperCase() === "[BLANK_AUDIO]") {
-        entry.endMs = nextEntry.startMs;
+  for (const entry of allEntries) {
+    const key = `${entry.startMs}:${entry.endMs}`;
+    const confidence = entry.confidence ?? 0.5;
+
+    if (!seen.has(key)) {
+      seen.set(key, entry);
+      dedupedEntries.push(entry);
+    } else {
+      // Existing entry with same timing - compare confidence
+      const existing = seen.get(key)!;
+      const existingConfidence = existing.confidence ?? 0.5;
+
+      // Keep the higher confidence version (more likely accurate)
+      if (confidence > existingConfidence) {
+        // Replace the existing entry
+        const idx = dedupedEntries.indexOf(existing);
+        if (idx !== -1) {
+          dedupedEntries[idx] = entry;
+        }
+        seen.set(key, entry);
+      }
+      // Otherwise keep the existing one (higher or equal confidence)
+    }
+  }
+
+  // Fill large gaps (>10 seconds) with BLANK_AUDIO to signal captions are on but silent
+  const finalEntries: SubtitleEntry[] = [];
+  const GAP_THRESHOLD_MS = 10000; // 10 seconds
+
+  for (let i = 0; i < dedupedEntries.length; i++) {
+    finalEntries.push(dedupedEntries[i]);
+
+    // Check gap to next entry
+    if (i < dedupedEntries.length - 1) {
+      const gap = dedupedEntries[i + 1].startMs - dedupedEntries[i].endMs;
+
+      if (gap > GAP_THRESHOLD_MS) {
+        // Create a BLANK_AUDIO entry for the gap
+        finalEntries.push({
+          index: -1, // Will be renumbered
+          startMs: dedupedEntries[i].endMs,
+          endMs: dedupedEntries[i + 1].startMs,
+          text: "[BLANK_AUDIO]",
+        });
       }
     }
   }
 
-  for (let i = 0; i < allEntries.length; i++) {
+  // Renumber entries and build output
+  for (let i = 0; i < finalEntries.length; i++) {
     result.push(String(i + 1));
-    result.push(`${msToTime(allEntries[i].startMs)} --> ${msToTime(allEntries[i].endMs)}`);
-    result.push(allEntries[i].text);
+    result.push(`${msToTime(finalEntries[i].startMs)} --> ${msToTime(finalEntries[i].endMs)}`);
+    result.push(finalEntries[i].text);
     result.push("");
   }
 
@@ -497,7 +532,7 @@ async function runTranscribeCommand(
       "en",
       "--model",
       modelPath,
-      "--output-srt",
+      "--output-json",
       "--print-progress",
       wavPath,
     ]);
