@@ -75,8 +75,6 @@ body {
 
 .main {
   flex: 1;
-  max-width: 800px;
-  margin: 2rem auto;
   width: 100%;
   padding: 0 1rem;
 }
@@ -608,7 +606,7 @@ body {
 
 @media (min-width: 800px) {
   .video-editor-layout {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 60% 40%;
     align-items: start;
   }
 

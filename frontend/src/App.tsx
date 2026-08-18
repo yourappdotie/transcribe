@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { uploadFile, getStatus, type FileStatus } from "./api";
+import { uploadFile, getStatus } from "./api";
+import type { FileStatus } from "./api";
 import Uploader from "./components/Uploader";
 import StatusDisplay from "./components/StatusDisplay";
 import PreviousUploads from "./components/PreviousUploads";
@@ -14,7 +15,20 @@ interface TranscriptionJob {
 }
 
 export default function App() {
-  const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
+  const [jobs, setJobs] = useState<TranscriptionJob[]>(() => {
+    try {
+      const stored = localStorage.getItem("transcribe_jobs");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Persist jobs to localStorage
+  useEffect(() => {
+    const jobsWithoutEventSource = jobs.map(({ eventSource, ...job }) => job);
+    localStorage.setItem("transcribe_jobs", JSON.stringify(jobsWithoutEventSource));
+  }, [jobs]);
 
   // Set up SSE for active jobs
   useEffect(() => {
@@ -68,16 +82,7 @@ export default function App() {
 
   const handleResume = async (fileId: string, filename: string) => {
     try {
-      // Call backend to resume transcription
-      const resumeResponse = await fetch(`http://localhost:5000/api/transcription/${fileId}/resume`, {
-        method: "POST",
-      });
-
-      if (!resumeResponse.ok) {
-        throw new Error("Failed to resume transcription");
-      }
-
-      // Get fresh status with progress reset to 0
+      // Get current status without triggering resume (to avoid regenerating VTT from chunks)
       const status = await getStatus(fileId);
 
       const newJob: TranscriptionJob = {
@@ -88,10 +93,10 @@ export default function App() {
       };
 
       setJobs((prev) => [newJob, ...prev]);
-      // SSE will start automatically via useEffect
+      // SSE will start automatically via useEffect if transcription is in progress
     } catch (err) {
       console.error("Resume error:", err);
-      alert("Failed to resume job. Please try again.");
+      alert("Failed to load job. Please try again.");
     }
   };
 
@@ -129,22 +134,16 @@ export default function App() {
       </header>
 
       <main className="main">
-        {!isProcessing && (
+        {jobs.length === 0 ? (
           <>
             <Uploader onUpload={handleUpload} />
             <PreviousUploads onResume={handleResume} />
           </>
+        ) : (
+          <div className="jobs">
+            {jobs.map((job) => <StatusDisplay key={job.fileId} job={job} />)}
+          </div>
         )}
-
-        <div className="jobs">
-          {jobs.length === 0 ? (
-            <div className="empty-state">
-              <p>No transcriptions yet. Upload a file to get started.</p>
-            </div>
-          ) : (
-            jobs.map((job) => <StatusDisplay key={job.fileId} job={job} />)
-          )}
-        </div>
       </main>
 
       <footer className="footer">
