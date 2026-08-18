@@ -34,7 +34,7 @@ export async function getFileStatus(fileId: string): Promise<FileStatus> {
   try {
     const files = await fs.readdir(fileDir);
 
-    // Find video file and determine filename
+    // Find video file
     const videoFile = files.find((f) => f.match(/\.(mp4|mov|webm|mkv)$/i));
     if (!videoFile) {
       return {
@@ -49,100 +49,44 @@ export async function getFileStatus(fileId: string): Promise<FileStatus> {
     const ext = path.extname(filename).toLowerCase();
     const basename = path.basename(filename, ext);
 
-    // Check for final files
+    // Check for VTT/SRT files (regardless of state)
     const finalVttExists = files.some((f) => f === `${basename}.vtt`);
     const finalSrtExists = files.some((f) => f === `${basename}.srt`);
     const mp4Exists = files.some((f) => f === `${basename}.mp4`);
 
-    // Check for unedited backup files
-    const uneditedVttExists = files.some((f) => f === `${basename}_unedited.vtt`);
-
-    // Check for chunk files to determine progress
+    // Check for chunk files
     const chunkSrts = files.filter((f) => f.match(/^chunk_\d+\.srt$/)).length;
 
-    // Calculate total expected chunks from video duration
-    const videoPath = path.join(fileDir, filename);
+    // Determine progress
     let totalChunks = 0;
     try {
       const { getVideoDuration } = await import("./transcribe.js");
-      const duration = await getVideoDuration(videoPath);
-      totalChunks = Math.ceil(duration / 60); // 60-second chunks
+      const duration = await getVideoDuration(path.join(fileDir, filename));
+      totalChunks = Math.ceil(duration / 60);
     } catch {
-      totalChunks = 0;
+      // Can't calculate, estimate from chunks
+      totalChunks = chunkSrts || 1;
     }
 
-    // If final files exist AND all chunks are transcribed, transcription is complete
-    if (finalVttExists && finalSrtExists && chunkSrts === totalChunks && totalChunks > 0) {
-      return {
-        fileId,
-        filename,
-        step: "completed",
-        message: "Transcription complete",
-        progress: 100,
-        output: {
-          srt: `${basename}.srt`,
-          vtt: `${basename}.vtt`,
-          mp4: mp4Exists ? `${basename}.mp4` : null,
-        },
-      };
-    }
+    const progress = totalChunks > 0 ? Math.round((chunkSrts / totalChunks) * 100) : 0;
+    const isComplete = chunkSrts > 0 && chunkSrts === totalChunks;
 
-    // If unedited backup exists, we're in transcription
-    if (uneditedVttExists && chunkSrts > 0) {
-      const videoPath = path.join(fileDir, filename);
-      let totalChunks = 0;
-      try {
-        const { getVideoDuration } = await import("./transcribe.js");
-        const duration = await getVideoDuration(videoPath);
-        totalChunks = Math.ceil(duration / 60); // 60-second chunks
-      } catch {
-        // If we can't get duration, estimate from chunk count
-        totalChunks = chunkSrts + 2;
-      }
-
-      const progress = totalChunks > 0 ? Math.round((chunkSrts / totalChunks) * 100) : 0;
-
-      return {
-        fileId,
-        filename,
-        step: "transcribing",
-        message: `Transcribing chunk ${chunkSrts}/${totalChunks}...`,
-        progress,
-        numChunks: totalChunks,
-      };
-    }
-
-    // Chunks exist but no final files → resumable transcription
-    if (chunkSrts > 0) {
-      const videoPath = path.join(fileDir, filename);
-      let totalChunks = 0;
-      try {
-        const { getVideoDuration } = await import("./transcribe.js");
-        const duration = await getVideoDuration(videoPath);
-        totalChunks = Math.ceil(duration / 60);
-      } catch {
-        totalChunks = chunkSrts + 2;
-      }
-
-      const progress = totalChunks > 0 ? Math.round((chunkSrts / totalChunks) * 100) : 0;
-
-      return {
-        fileId,
-        filename,
-        step: "transcribing",
-        message: `Transcribing chunk ${chunkSrts}/${totalChunks}... (resuming)`,
-        progress,
-        numChunks: totalChunks,
-      };
-    }
-
-    // Only video file exists
     return {
       fileId,
       filename,
-      step: "extracting",
-      message: "Preparing audio extraction...",
-      progress: 0,
+      step: isComplete ? "completed" : chunkSrts > 0 ? "transcribing" : "extracting",
+      message: isComplete
+        ? "Transcription complete"
+        : chunkSrts > 0
+        ? `Transcribing chunk ${chunkSrts}/${totalChunks}...`
+        : "Preparing audio extraction...",
+      progress: isComplete ? 100 : progress,
+      numChunks: totalChunks,
+      output: finalVttExists || finalSrtExists ? {
+        srt: finalSrtExists ? `${basename}.srt` : null,
+        vtt: finalVttExists ? `${basename}.vtt` : null,
+        mp4: mp4Exists ? `${basename}.mp4` : null,
+      } : undefined,
     };
   } catch {
     return {

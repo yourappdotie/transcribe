@@ -114,7 +114,6 @@ export async function transcribeFile(fileId: string, inputPath: string, signal?:
       // Check if this chunk is already transcribed
       try {
         await fs.access(srtPath);
-        console.log(`Chunk ${chunkNum} already transcribed, skipping...`);
 
         // Broadcast progress for skipped chunks
         statusEmitter.emit("update", fileId, {
@@ -317,8 +316,13 @@ async function buildIncrementalFinalVtt(
 
   await fs.writeFile(uneditedSrtPath, mergedSrt);
   await fs.writeFile(uneditedVttPath, mergedVtt);
-  await fs.writeFile(finalSrtPath, mergedSrt);
-  await fs.writeFile(finalVttPath, mergedVtt);
+
+  // Only update final files if they don't exist yet (first time)
+  // After that, only user edits via /api/update-subtitles should modify final files
+  if (!finalFilesExist) {
+    await fs.writeFile(finalSrtPath, mergedSrt);
+    await fs.writeFile(finalVttPath, mergedVtt);
+  }
 }
 
 async function readAndOffsetSRT(

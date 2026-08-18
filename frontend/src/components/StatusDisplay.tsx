@@ -16,9 +16,11 @@ interface StatusDisplayProps {
 function VideoPlayer({
   fileId,
   status,
+  vttContent,
 }: {
   fileId: string;
   status: FileStatus;
+  vttContent?: string;
 }) {
   if (!status.output?.vtt && !status.output?.mp4) {
     return <p className="no-video">No video file available</p>;
@@ -33,6 +35,7 @@ function VideoPlayer({
         <source src={getDownloadUrl(fileId, videoFile || "")} type="video/mp4" />
         {status.output.vtt && (
           <track
+            key={vttContent}
             kind="subtitles"
             src={getDownloadUrl(fileId, status.output.vtt)}
             srcLang="en"
@@ -81,13 +84,15 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const [timeSinceUpdate, setTimeSinceUpdate] = useState<string>("0s");
 
-  // Load VTT content when editor is opened
+  // Load VTT content when editor is opened or when status updates
   useEffect(() => {
     const vttFile = status.output?.vtt;
-    if (showEditor && !vttContent && isComplete && vttFile) {
+    if (vttFile) {
       const loadVTT = async () => {
         try {
-          const response = await fetch(getDownloadUrl(fileId, vttFile));
+          const response = await fetch(getDownloadUrl(fileId, vttFile), {
+            cache: "no-store"
+          });
           if (response.ok) {
             const content = await response.text();
             setVttContent(content);
@@ -96,9 +101,10 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
           console.error("Failed to load VTT content:", err);
         }
       };
+
       loadVTT();
     }
-  }, [showEditor, fileId, status.output, vttContent, isComplete]);
+  }, [showEditor, fileId, status.output?.vtt, status.progress, isComplete]);
 
   // Track when progress updates
   useEffect(() => {
@@ -175,7 +181,7 @@ export default function StatusDisplay({ job }: StatusDisplayProps) {
             <div className="video-editor-layout">
               <div className="player-section">
                 <h4>Preview</h4>
-                <VideoPlayer fileId={fileId} status={status} />
+                <VideoPlayer fileId={fileId} status={status} vttContent={vttContent} />
               </div>
 
               {status.output.vtt && (
