@@ -6,7 +6,7 @@ import { getModelPath, statusEmitter } from "./storage.js";
 const CHUNK_DURATION = 60; // 1 minute
 const CHUNK_OVERLAP = 5; // 5 second overlap
 
-interface SubtitleEntry {
+export interface SubtitleEntry {
   index: number;
   startMs: number;
   endMs: number;
@@ -375,7 +375,7 @@ async function readAndOffsetJSON(
   }
 }
 
-function timeToMs(timeStr: string): number {
+export function timeToMs(timeStr: string): number {
   const parts = timeStr.replace(",", ".").split(":");
   const hours = parseInt(parts[0], 10);
   const minutes = parseInt(parts[1], 10);
@@ -383,7 +383,7 @@ function timeToMs(timeStr: string): number {
   return (hours * 3600 + minutes * 60 + seconds) * 1000;
 }
 
-function msToTime(ms: number): string {
+export function msToTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -393,7 +393,7 @@ function msToTime(ms: number): string {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
 }
 
-function subtitlesToSRT(entries: SubtitleEntry[]): string {
+export function subtitlesToSRT(entries: SubtitleEntry[]): string {
   const lines: string[] = [];
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
@@ -405,7 +405,7 @@ function subtitlesToSRT(entries: SubtitleEntry[]): string {
   return lines.join("\n");
 }
 
-function mergeSubtitlesWithOverlap(
+export function mergeSubtitlesWithOverlap(
   allSubtitles: SubtitleEntry[][],
   numChunks: number
 ): string {
